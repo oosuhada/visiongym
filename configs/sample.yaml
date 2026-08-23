@@ -1,0 +1,30 @@
+seed: 7
+canvas:
+  width: 512
+  height: 512
+splits:
+  train: 8
+  validation: 2
+  test: 4
+  ood_shape: 2
+  ood_palette: 2
+  ood_count: 2
+  ood_background: 2
+  ood_occlusion: 2
+objects_per_scene:
+  id: [3, 5]
+  ood_count: [6, 8]
+questions_per_scene: 3
+task_families:
+  - counting
+  - left_right
+  - above_below
+  - nearest_farthest
+  - relative_size
+  - center_proximity
+  - relative_ordering
+  - between
+  - overlap
+  - inside_outside
+  - multi_hop
+

@@ -1,0 +1,162 @@
+{
+  "config": {
+    "seed": 7,
+    "canvas": {
+      "width": 512,
+      "height": 512
+    },
+    "splits": {
+      "train": 8,
+      "validation": 2,
+      "test": 4,
+      "ood_shape": 2,
+      "ood_palette": 2,
+      "ood_count": 2,
+      "ood_background": 2,
+      "ood_occlusion": 2
+    },
+    "objects_per_scene": {
+      "id": [
+        3,
+        5
+      ],
+      "ood_count": [
+        6,
+        8
+      ]
+    },
+    "questions_per_scene": 3,
+    "task_families": [
+      "counting",
+      "left_right",
+      "above_below",
+      "nearest_farthest",
+      "relative_size",
+      "center_proximity",
+      "relative_ordering",
+      "between",
+      "overlap",
+      "inside_outside",
+      "multi_hop"
+    ]
+  },
+  "splits": [
+    {
+      "split": "train",
+      "ood_type": null,
+      "scenes": 8,
+      "qa_pairs": 24,
+      "task_counts": {
+        "above_below": 1,
+        "between": 1,
+        "center_proximity": 3,
+        "counting": 2,
+        "inside_outside": 4,
+        "left_right": 1,
+        "multi_hop": 2,
+        "nearest_farthest": 3,
+        "overlap": 1,
+        "relative_ordering": 2,
+        "relative_size": 4
+      }
+    },
+    {
+      "split": "validation",
+      "ood_type": null,
+      "scenes": 2,
+      "qa_pairs": 6,
+      "task_counts": {
+        "above_below": 1,
+        "center_proximity": 1,
+        "inside_outside": 1,
+        "multi_hop": 1,
+        "overlap": 1,
+        "relative_ordering": 1
+      }
+    },
+    {
+      "split": "test",
+      "ood_type": null,
+      "scenes": 4,
+      "qa_pairs": 12,
+      "task_counts": {
+        "above_below": 2,
+        "center_proximity": 2,
+        "counting": 2,
+        "inside_outside": 1,
+        "left_right": 1,
+        "overlap": 1,
+        "relative_ordering": 2,
+        "relative_size": 1
+      }
+    },
+    {
+      "split": "ood_shape",
+      "ood_type": "shape",
+      "scenes": 2,
+      "qa_pairs": 6,
+      "task_counts": {
+        "center_proximity": 1,
+        "counting": 1,
+        "inside_outside": 1,
+        "left_right": 1,
+        "nearest_farthest": 1,
+        "relative_size": 1
+      }
+    },
+    {
+      "split": "ood_palette",
+      "ood_type": "palette",
+      "scenes": 2,
+      "qa_pairs": 6,
+      "task_counts": {
+        "inside_outside": 1,
+        "left_right": 1,
+        "overlap": 1,
+        "relative_ordering": 1,
+        "relative_size": 2
+      }
+    },
+    {
+      "split": "ood_count",
+      "ood_type": "count",
+      "scenes": 2,
+      "qa_pairs": 6,
+      "task_counts": {
+        "inside_outside": 1,
+        "left_right": 1,
+        "multi_hop": 1,
+        "overlap": 1,
+        "relative_ordering": 2
+      }
+    },
+    {
+      "split": "ood_background",
+      "ood_type": "background",
+      "scenes": 2,
+      "qa_pairs": 6,
+      "task_counts": {
+        "above_below": 1,
+        "counting": 1,
+        "multi_hop": 1,
+        "nearest_farthest": 1,
+        "overlap": 1,
+        "relative_size": 1
+      }
+    },
+    {
+      "split": "ood_occlusion",
+      "ood_type": "occlusion",
+      "scenes": 2,
+      "qa_pairs": 6,
+      "task_counts": {
+        "above_below": 1,
+        "center_proximity": 2,
+        "multi_hop": 1,
+        "overlap": 1,
+        "relative_size": 1
+      }
+    }
+  ],
+  "benchmark_qa_pairs": 42
+}
