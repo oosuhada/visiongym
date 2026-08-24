@@ -12,6 +12,7 @@ from visiongym.evaluation import read_jsonl, write_jsonl
 
 
 PROMPT_MODES = {"direct", "json", "reasoning", "fewshot"}
+DEVICE_MODES = {"auto", "cuda", "mps", "cpu"}
 
 
 def build_prompt(question: str, mode: str) -> str:
@@ -39,8 +40,37 @@ def build_prompt(question: str, mode: str) -> str:
     return f"Look at the image and answer the question. Return only the short final answer. Question: {question}"
 
 
+def resolve_device(torch_module: Any, requested: str = "auto", load_in_4bit: bool = False) -> str:
+    if requested not in DEVICE_MODES:
+        raise ValueError(f"Unsupported device: {requested}. Choose one of {sorted(DEVICE_MODES)}")
+
+    if requested == "auto":
+        if torch_module.cuda.is_available():
+            resolved = "cuda"
+        elif hasattr(torch_module.backends, "mps") and torch_module.backends.mps.is_available():
+            resolved = "mps"
+        else:
+            resolved = "cpu"
+    else:
+        resolved = requested
+
+    if resolved == "cuda" and not torch_module.cuda.is_available():
+        raise RuntimeError("CUDA was requested, but torch.cuda.is_available() is false.")
+    if resolved == "mps" and not (hasattr(torch_module.backends, "mps") and torch_module.backends.mps.is_available()):
+        raise RuntimeError("MPS was requested, but torch.backends.mps.is_available() is false.")
+    if load_in_4bit and resolved != "cuda":
+        raise RuntimeError("4-bit bitsandbytes loading is supported by VisionGym only on CUDA. Disable --load-in-4bit for MPS/CPU.")
+    return resolved
+
+
 class TransformersVLM:
-    def __init__(self, model_name: str, adapter_path: str | None = None, load_in_4bit: bool = False) -> None:
+    def __init__(
+        self,
+        model_name: str,
+        adapter_path: str | None = None,
+        load_in_4bit: bool = False,
+        device: str = "auto",
+    ) -> None:
         try:
             import torch
             from transformers import AutoProcessor
@@ -49,8 +79,11 @@ class TransformersVLM:
 
         self.torch = torch
         self.model_name = model_name
+        self.device = resolve_device(torch, requested=device, load_in_4bit=load_in_4bit)
         self.processor = AutoProcessor.from_pretrained(model_name)
-        model_kwargs: dict[str, Any] = {"device_map": "auto", "dtype": "auto"}
+        model_kwargs: dict[str, Any] = {"dtype": "auto"}
+        if self.device == "cuda":
+            model_kwargs["device_map"] = "auto"
         if load_in_4bit:
             from transformers import BitsAndBytesConfig
 
@@ -71,6 +104,8 @@ class TransformersVLM:
             except ImportError as exc:
                 raise RuntimeError("PEFT is required to load a LoRA adapter. Install requirements-train.txt") from exc
             base_model = PeftModel.from_pretrained(base_model, adapter_path)
+        if self.device in {"mps", "cpu"}:
+            base_model = base_model.to(self.device)
         self.model = base_model.eval()
 
     def predict(self, image: Image.Image, question: str, prompt_mode: str = "direct", max_new_tokens: int = 48) -> str:
@@ -91,6 +126,7 @@ class TransformersVLM:
             return_dict=True,
             return_tensors="pt",
         )
+        inputs.pop("token_type_ids", None)
         model_device = next(self.model.parameters()).device
         inputs = {key: value.to(model_device) if hasattr(value, "to") else value for key, value in inputs.items()}
         with self.torch.inference_mode():
@@ -108,12 +144,18 @@ def run_inference(
     adapter_path: str | None = None,
     limit: int | None = None,
     load_in_4bit: bool = False,
+    device: str = "auto",
 ) -> list[dict[str, Any]]:
     dataset_path = Path(dataset_path)
     records = read_jsonl(dataset_path)
     if limit is not None:
         records = records[:limit]
-    runner = TransformersVLM(model_name=model_name, adapter_path=adapter_path, load_in_4bit=load_in_4bit)
+    runner = TransformersVLM(
+        model_name=model_name,
+        adapter_path=adapter_path,
+        load_in_4bit=load_in_4bit,
+        device=device,
+    )
     predictions: list[dict[str, Any]] = []
     for sample in tqdm(records, desc=f"Inference {model_name}"):
         image_path = dataset_path.parent / sample["image"]
@@ -130,6 +172,7 @@ def run_inference(
                 "model": model_name,
                 "prompt_mode": prompt_mode,
                 "adapter_path": adapter_path,
+                "device": runner.device,
             }
         )
     write_jsonl(output_path, predictions)

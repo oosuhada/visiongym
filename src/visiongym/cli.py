@@ -31,6 +31,7 @@ def _build_parser() -> argparse.ArgumentParser:
     infer.add_argument("--adapter", default=None, help="Optional PEFT LoRA adapter path")
     infer.add_argument("--limit", type=int, default=None)
     infer.add_argument("--load-in-4bit", action="store_true")
+    infer.add_argument("--device", default="auto", choices=["auto", "cuda", "mps", "cpu"])
 
     oracle = subparsers.add_parser("oracle", help="Create perfect predictions for evaluation smoke tests")
     oracle.add_argument("--dataset", required=True)
@@ -86,6 +87,7 @@ def main() -> None:
             adapter_path=args.adapter,
             limit=args.limit,
             load_in_4bit=args.load_in_4bit,
+            device=args.device,
         )
         print(json.dumps({"predictions": len(records), "output": args.output}, ensure_ascii=False, indent=2))
     elif args.command == "oracle":
