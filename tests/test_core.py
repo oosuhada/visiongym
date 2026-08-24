@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from visiongym.dataset import generate_single_split
 from visiongym.evaluation import evaluate_records, normalize_answer, read_jsonl
@@ -45,11 +46,15 @@ def test_occlusion_split_contains_overlap(tmp_path: Path) -> None:
 
 
 def test_cpu_device_rejects_bitsandbytes_4bit() -> None:
-    import torch
+    fake_torch = SimpleNamespace(
+        cuda=SimpleNamespace(is_available=lambda: False),
+        backends=SimpleNamespace(mps=SimpleNamespace(is_available=lambda: False)),
+    )
 
-    assert resolve_device(torch, requested="cpu", load_in_4bit=False) == "cpu"
+    assert resolve_device(fake_torch, requested="cpu", load_in_4bit=False) == "cpu"
+    assert resolve_device(fake_torch, requested="auto", load_in_4bit=False) == "cpu"
     try:
-        resolve_device(torch, requested="cpu", load_in_4bit=True)
+        resolve_device(fake_torch, requested="cpu", load_in_4bit=True)
     except RuntimeError as exc:
         assert "CUDA" in str(exc)
     else:
