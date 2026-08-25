@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import gradio as gr
+import pandas as pd
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -56,6 +57,22 @@ def _resolve_optional_path(env_name: str) -> Path | None:
     return path if path.is_absolute() else REPO_ROOT / path
 
 
+def _read_csv(path: Path | None) -> pd.DataFrame:
+    if path is None or not path.exists():
+        return pd.DataFrame()
+    return pd.read_csv(path)
+
+
+def _load_experiment_data() -> tuple[Path | None, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    experiment_dir = _resolve_optional_path("VISIONGYM_EXPERIMENT_DIR")
+    if experiment_dir is None or not experiment_dir.is_dir():
+        return None, pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    comparison = _read_csv(experiment_dir / "comparison.csv")
+    pairwise = _read_csv(experiment_dir / "pairwise_summary.csv")
+    gallery = _read_csv(experiment_dir / "failure_gallery.csv")
+    return experiment_dir, comparison, pairwise, gallery
+
+
 def generate_problem(condition: str, seed: int) -> tuple[str, str, str, str, str]:
     ood_type = OOD_BY_LABEL[condition]
     object_count = random.Random(seed).randint(6, 8) if ood_type == "count" else random.Random(seed).randint(3, 5)
@@ -81,6 +98,12 @@ def _build_viewer_data() -> tuple[list[dict[str, Any]], dict[str, str], dict[str
 
 VIEWER_RECORDS, BASE_PREDICTIONS, FINETUNED_PREDICTIONS = _build_viewer_data()
 VIEWER_BY_ID = {record["sample_id"]: record for record in VIEWER_RECORDS}
+EXPERIMENT_DIR, EXPERIMENT_COMPARISON, EXPERIMENT_PAIRWISE, EXPERIMENT_FAILURES = _load_experiment_data()
+EXPERIMENT_FAILURE_BY_KEY: dict[str, dict[str, Any]] = {}
+if not EXPERIMENT_FAILURES.empty:
+    for row in EXPERIMENT_FAILURES.to_dict(orient="records"):
+        key = f"{row.get('run', 'run')} · {row.get('sample_id', 'sample')}"
+        EXPERIMENT_FAILURE_BY_KEY[key] = row
 
 
 def show_result(sample_id: str) -> tuple[str | None, str, str, str, str, str, str]:
@@ -98,6 +121,26 @@ def show_result(sample_id: str) -> tuple[str | None, str, str, str, str, str, st
     )
     metadata = f"task={sample['task']} · difficulty={sample['difficulty']} · split={sample['split']} · ood={sample.get('ood_type') or 'ID'}"
     return str(image_path), sample["question"], ground_truth, base, finetuned, status, metadata
+
+
+def show_experiment_failure(key: str) -> tuple[str | None, str, str, str, str]:
+    row = EXPERIMENT_FAILURE_BY_KEY.get(key)
+    if row is None:
+        return None, "", "", "", ""
+    dataset_path = _resolve_optional_path("VISIONGYM_DATASET") or REPO_ROOT / "data" / "sample" / "benchmark.jsonl"
+    image_value = row.get("image")
+    image_path = dataset_path.parent / str(image_value) if image_value else None
+    metadata = (
+        f"run={row.get('run')} · task={row.get('task')} · difficulty={row.get('difficulty')} · "
+        f"split={row.get('split')} · ood={row.get('ood_type')} · error={row.get('error_type')}"
+    )
+    return (
+        str(image_path) if image_path is not None else None,
+        str(row.get("question") or ""),
+        str(row.get("ground_truth") or ""),
+        str(row.get("prediction") or ""),
+        metadata,
+    )
 
 
 def build_app() -> gr.Blocks:
@@ -157,6 +200,54 @@ def build_app() -> gr.Blocks:
                         result_finetuned,
                         result_status,
                         result_metadata,
+                    ],
+                )
+
+        with gr.Tab("Experiment Analysis"):
+            experiment_status = (
+                f"Loaded experiment bundle: `{EXPERIMENT_DIR}`"
+                if EXPERIMENT_DIR is not None
+                else "No experiment bundle loaded. Set `VISIONGYM_EXPERIMENT_DIR` to an ingested result directory."
+            )
+            gr.Markdown(experiment_status)
+            gr.Markdown("### Run comparison")
+            gr.Dataframe(value=EXPERIMENT_COMPARISON, interactive=False, wrap=True)
+            gr.Markdown("### Paired improvement / regression")
+            gr.Dataframe(value=EXPERIMENT_PAIRWISE, interactive=False, wrap=True)
+            gr.Markdown("### Representative failures")
+            failure_keys = list(EXPERIMENT_FAILURE_BY_KEY)
+            failure_dropdown = gr.Dropdown(
+                failure_keys,
+                value=failure_keys[0] if failure_keys else None,
+                label="Failure sample",
+            )
+            failure_image = gr.Image(label="Image", type="filepath")
+            failure_question = gr.Textbox(label="Question")
+            with gr.Row():
+                failure_ground_truth = gr.Textbox(label="Ground truth")
+                failure_prediction = gr.Textbox(label="Prediction")
+            failure_metadata = gr.Textbox(label="Failure metadata")
+            failure_dropdown.change(
+                show_experiment_failure,
+                inputs=failure_dropdown,
+                outputs=[
+                    failure_image,
+                    failure_question,
+                    failure_ground_truth,
+                    failure_prediction,
+                    failure_metadata,
+                ],
+            )
+            if failure_keys:
+                demo.load(
+                    show_experiment_failure,
+                    inputs=failure_dropdown,
+                    outputs=[
+                        failure_image,
+                        failure_question,
+                        failure_ground_truth,
+                        failure_prediction,
+                        failure_metadata,
                     ],
                 )
     return demo

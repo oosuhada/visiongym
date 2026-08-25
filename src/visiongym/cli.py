@@ -6,6 +6,7 @@ from pathlib import Path
 
 from visiongym.dataset import generate_from_config, generate_single_split
 from visiongym.evaluation import compare_metric_files, evaluate_files
+from visiongym.experiments import ingest_results
 from visiongym.inference import run_inference, write_oracle_predictions
 from visiongym.reporting import create_report
 from visiongym.sft import prepare_sft_dataset, train_lora
@@ -59,6 +60,12 @@ def _build_parser() -> argparse.ArgumentParser:
     report = subparsers.add_parser("report", help="Generate CSV/chart/markdown summaries from metrics.json")
     report.add_argument("--metrics", required=True)
     report.add_argument("--output", required=True)
+
+    ingest = subparsers.add_parser("ingest-results", help="Ingest Colab result ZIP/directory and rebuild validated experiment reports")
+    ingest.add_argument("--bundle", required=True, help="Colab result directory or ZIP")
+    ingest.add_argument("--dataset", required=True, help="Benchmark JSONL used for the predictions")
+    ingest.add_argument("--output", required=True, help="Experiment output directory")
+    ingest.add_argument("--strict", action="store_true", help="Fail on missing, duplicate, or unexpected sample IDs")
 
     return parser
 
@@ -114,6 +121,9 @@ def main() -> None:
     elif args.command == "report":
         created = create_report(args.metrics, args.output)
         print(json.dumps({"created": [str(path) for path in created]}, ensure_ascii=False, indent=2))
+    elif args.command == "ingest-results":
+        manifest = ingest_results(args.bundle, args.dataset, args.output, strict=args.strict)
+        print(json.dumps(manifest, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
