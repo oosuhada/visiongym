@@ -2,7 +2,7 @@
 
 **Synthetic VLM reasoning benchmark, fine-tuning, and failure-analysis lab with automatic ground truth.**
 
-[Live Demo](https://visiongym.oosu.dev) · [Measured Results](#measured-a100-results) · [Reproduce](#quick-start-cpu-pipeline)
+[Live Demo](https://visiongym.oosu.dev) · [Release v0.1.1](https://github.com/oosuhada/vlm-reasoning-lab/releases/tag/v0.1.1) · [Measured Results](#measured-a100-results) · [Reproduce](#quick-start-cpu-pipeline)
 
 VLM Reasoning Lab measures how Vision-Language Models handle spatial relations, counting, distance, comparison, multi-hop reasoning, and distribution shift. Every image is rendered from programmatically known object metadata, so both the question and ground truth are generated automatically without human labeling.
 
