@@ -1,0 +1,8 @@
+-r requirements.txt
+torch>=2.3
+torchvision>=0.18
+transformers>=4.57
+accelerate>=0.34
+qwen-vl-utils>=0.0.8
+bitsandbytes>=0.43; platform_system == "Linux"
+
