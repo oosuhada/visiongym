@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "source": "checked-in evaluated reports",
+  "runs": [
+    {
+      "name": "base-direct",
+      "model": "Qwen/Qwen3-VL-2B-Instruct",
+      "prompt_mode": "direct",
+      "adapter_path": null,
+      "metrics": "../base-direct/metrics.json",
+      "scored_predictions": "../base-direct/predictions_scored.csv"
+    },
+    {
+      "name": "base-fewshot",
+      "model": "Qwen/Qwen3-VL-2B-Instruct",
+      "prompt_mode": "fewshot",
+      "adapter_path": null,
+      "metrics": "../base-fewshot/metrics.json",
+      "scored_predictions": "../base-fewshot/predictions_scored.csv"
+    },
+    {
+      "name": "lora-direct",
+      "model": "Qwen/Qwen3-VL-2B-Instruct+VisionGym-LoRA",
+      "prompt_mode": "direct",
+      "adapter_path": "measured-lora",
+      "metrics": "../lora-direct/metrics.json",
+      "scored_predictions": "../lora-direct/predictions_scored.csv"
+    },
+    {
+      "name": "lora-fewshot",
+      "model": "Qwen/Qwen3-VL-2B-Instruct+VisionGym-LoRA",
+      "prompt_mode": "fewshot",
+      "adapter_path": "measured-lora",
+      "metrics": "../lora-fewshot/metrics.json",
+      "scored_predictions": "../lora-fewshot/predictions_scored.csv"
+    }
+  ],
+  "comparison": "comparison.csv",
+  "failure_gallery": "failure_gallery.csv",
+  "pairwise": {
+    "baseline": "base-direct",
+    "summary": "pairwise_summary.csv",
+    "task_delta": "pairwise_task_delta.csv",
+    "examples": "pairwise_examples.csv"
+  },
+  "summary": "summary.md"
+}

@@ -9,6 +9,7 @@
   "ood_gap": 0.08399999999999996,
   "invalid_output_rate": 0.0,
   "average_latency_seconds": 0.042784923596428985,
+  "evaluation_schema_version": 2,
   "by_task": {
     "above_below": {
       "accuracy": 0.32098765432098764,
@@ -122,13 +123,309 @@
     }
   },
   "error_distribution": {
-    "ood_failure": 479,
-    "spatial_inversion": 45,
-    "distance_reasoning_error": 40,
-    "object_confusion": 27,
-    "counting_error": 20,
-    "relation_chain_failure": 18,
-    "relation_error": 6,
-    "other": 2
+    "spatial_inversion": 211,
+    "distance_reasoning_error": 127,
+    "relation_chain_failure": 94,
+    "object_confusion": 91,
+    "counting_error": 78,
+    "relation_error": 30,
+    "other": 6
+  },
+  "ood_error_distribution": {
+    "spatial_inversion": 166,
+    "distance_reasoning_error": 87,
+    "relation_chain_failure": 76,
+    "object_confusion": 64,
+    "counting_error": 58,
+    "relation_error": 24,
+    "other": 4
+  },
+  "by_task_domain": {
+    "above_below": {
+      "ID": {
+        "accuracy": 0.375,
+        "samples": 24
+      },
+      "background": {
+        "accuracy": 0.6666666666666666,
+        "samples": 6
+      },
+      "count": {
+        "accuracy": 0.2727272727272727,
+        "samples": 11
+      },
+      "occlusion": {
+        "accuracy": 0.4,
+        "samples": 15
+      },
+      "palette": {
+        "accuracy": 0.16666666666666666,
+        "samples": 18
+      },
+      "shape": {
+        "accuracy": 0.14285714285714285,
+        "samples": 7
+      }
+    },
+    "between": {
+      "ID": {
+        "accuracy": 0.52,
+        "samples": 25
+      },
+      "background": {
+        "accuracy": 0.75,
+        "samples": 4
+      },
+      "count": {
+        "accuracy": 0.09090909090909091,
+        "samples": 11
+      },
+      "occlusion": {
+        "accuracy": 0.6,
+        "samples": 20
+      },
+      "palette": {
+        "accuracy": 0.26666666666666666,
+        "samples": 15
+      },
+      "shape": {
+        "accuracy": 0.6666666666666666,
+        "samples": 6
+      }
+    },
+    "center_proximity": {
+      "ID": {
+        "accuracy": 0.696969696969697,
+        "samples": 33
+      },
+      "background": {
+        "accuracy": 0.5333333333333333,
+        "samples": 15
+      },
+      "count": {
+        "accuracy": 0.7619047619047619,
+        "samples": 21
+      },
+      "occlusion": {
+        "accuracy": 0.5,
+        "samples": 16
+      },
+      "palette": {
+        "accuracy": 0.5,
+        "samples": 20
+      },
+      "shape": {
+        "accuracy": 0.7368421052631579,
+        "samples": 19
+      }
+    },
+    "counting": {
+      "ID": {
+        "accuracy": 0.6296296296296297,
+        "samples": 54
+      },
+      "background": {
+        "accuracy": 0.38095238095238093,
+        "samples": 21
+      },
+      "count": {
+        "accuracy": 0.2916666666666667,
+        "samples": 24
+      },
+      "occlusion": {
+        "accuracy": 0.4,
+        "samples": 25
+      },
+      "palette": {
+        "accuracy": 0.6363636363636364,
+        "samples": 11
+      },
+      "shape": {
+        "accuracy": 0.5263157894736842,
+        "samples": 19
+      }
+    },
+    "inside_outside": {
+      "ID": {
+        "accuracy": 0.8936170212765957,
+        "samples": 47
+      },
+      "background": {
+        "accuracy": 1.0,
+        "samples": 30
+      },
+      "count": {
+        "accuracy": 0.85,
+        "samples": 20
+      },
+      "occlusion": {
+        "accuracy": 1.0,
+        "samples": 8
+      },
+      "palette": {
+        "accuracy": 0.9444444444444444,
+        "samples": 18
+      },
+      "shape": {
+        "accuracy": 0.7307692307692307,
+        "samples": 26
+      }
+    },
+    "left_right": {
+      "ID": {
+        "accuracy": 0.25,
+        "samples": 24
+      },
+      "background": {
+        "accuracy": 0.35714285714285715,
+        "samples": 14
+      },
+      "count": {
+        "accuracy": 0.16666666666666666,
+        "samples": 12
+      },
+      "occlusion": {
+        "accuracy": 0.2631578947368421,
+        "samples": 19
+      },
+      "palette": {
+        "accuracy": 0.15,
+        "samples": 20
+      },
+      "shape": {
+        "accuracy": 0.09090909090909091,
+        "samples": 11
+      }
+    },
+    "multi_hop": {
+      "ID": {
+        "accuracy": 0.6538461538461539,
+        "samples": 52
+      },
+      "background": {
+        "accuracy": 0.5263157894736842,
+        "samples": 19
+      },
+      "count": {
+        "accuracy": 0.4090909090909091,
+        "samples": 22
+      },
+      "occlusion": {
+        "accuracy": 0.5333333333333333,
+        "samples": 30
+      },
+      "palette": {
+        "accuracy": 0.21621621621621623,
+        "samples": 37
+      },
+      "shape": {
+        "accuracy": 0.35294117647058826,
+        "samples": 17
+      }
+    },
+    "nearest_farthest": {
+      "ID": {
+        "accuracy": 0.3877551020408163,
+        "samples": 49
+      },
+      "background": {
+        "accuracy": 0.16666666666666666,
+        "samples": 12
+      },
+      "count": {
+        "accuracy": 0.36363636363636365,
+        "samples": 11
+      },
+      "occlusion": {
+        "accuracy": 0.46153846153846156,
+        "samples": 13
+      },
+      "palette": {
+        "accuracy": 0.16666666666666666,
+        "samples": 6
+      },
+      "shape": {
+        "accuracy": 0.14814814814814814,
+        "samples": 27
+      }
+    },
+    "overlap": {
+      "ID": {
+        "accuracy": 0.967741935483871,
+        "samples": 31
+      },
+      "background": {
+        "accuracy": 0.9523809523809523,
+        "samples": 21
+      },
+      "count": {
+        "accuracy": 0.8333333333333334,
+        "samples": 12
+      },
+      "occlusion": {
+        "accuracy": 0.6363636363636364,
+        "samples": 11
+      },
+      "palette": {
+        "accuracy": 1.0,
+        "samples": 18
+      },
+      "shape": {
+        "accuracy": 0.8064516129032258,
+        "samples": 31
+      }
+    },
+    "relative_ordering": {
+      "ID": {
+        "accuracy": 0.6129032258064516,
+        "samples": 31
+      },
+      "background": {
+        "accuracy": 0.6785714285714286,
+        "samples": 28
+      },
+      "count": {
+        "accuracy": 0.42857142857142855,
+        "samples": 35
+      },
+      "occlusion": {
+        "accuracy": 0.6666666666666666,
+        "samples": 27
+      },
+      "palette": {
+        "accuracy": 0.045454545454545456,
+        "samples": 22
+      },
+      "shape": {
+        "accuracy": 0.3,
+        "samples": 10
+      }
+    },
+    "relative_size": {
+      "ID": {
+        "accuracy": 0.43333333333333335,
+        "samples": 30
+      },
+      "background": {
+        "accuracy": 0.8,
+        "samples": 30
+      },
+      "count": {
+        "accuracy": 0.5714285714285714,
+        "samples": 21
+      },
+      "occlusion": {
+        "accuracy": 0.625,
+        "samples": 16
+      },
+      "palette": {
+        "accuracy": 0.6,
+        "samples": 15
+      },
+      "shape": {
+        "accuracy": 0.6666666666666666,
+        "samples": 27
+      }
+    }
   }
 }

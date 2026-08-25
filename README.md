@@ -189,7 +189,6 @@ Errors are automatically grouped into practical categories such as:
 - containment/overlap relation error
 - object confusion
 - answer format failure
-- OOD failure
 
 The raw image, question, ground truth, model prediction, task, difficulty, and OOD type remain in `failures.jsonl` for manual inspection.
 
@@ -208,6 +207,19 @@ visiongym ingest-results \
 ```
 
 The importer discovers prediction JSONL files, checks missing/duplicate/unexpected sample IDs, copies the raw predictions, re-runs the current evaluator, generates per-run charts/reports, creates a cross-run `comparison.csv`, and produces a stratified `failure_gallery.csv`. When multiple runs are present it also selects the base `direct` run and writes `pairwise_summary.csv`, `pairwise_task_delta.csv`, and `pairwise_examples.csv`, so prompt/LoRA runs can be inspected as samples fixed versus samples regressed instead of only comparing aggregate accuracy. This means Colab can focus only on expensive GPU inference/training while the canonical evaluation logic remains reproducible in the repository.
+
+For the checked-in measured runs, a compact analysis bundle can be rebuilt without duplicating raw predictions:
+
+```bash
+visiongym analyze-reports \
+  reports/base-direct \
+  reports/base-fewshot \
+  reports/lora-direct \
+  reports/lora-fewshot \
+  --output reports/measured
+```
+
+The deployed demo loads `reports/measured/` automatically when present.
 
 ## LoRA / QLoRA fine-tuning
 
@@ -275,7 +287,7 @@ The demo has three surfaces:
 
 1. **Generate Problem** — choose ID/OOD condition and seed, then inspect the generated image, question, ground truth, task, and difficulty.
 2. **Result Viewer** — inspect benchmark records and optionally compare precomputed base/fine-tuned predictions.
-3. **Experiment Analysis** — inspect imported run comparisons, paired improvements/regressions, and representative failures when an experiment bundle is configured.
+3. **Experiment Analysis** — inspect the checked-in measured run comparison, paired improvements/regressions, and representative failures. `VISIONGYM_EXPERIMENT_DIR` can override the default bundle.
 
 The repository includes a 24-sample measured showcase under `data/showcase/`. It is loaded by default and covers every benchmark split and reasoning task, with Base few-shot and VisionGym LoRA direct predictions side by side.
 
@@ -286,6 +298,8 @@ export VISIONGYM_DATASET=data/generated/benchmark.jsonl
 export VISIONGYM_BASE_PREDICTIONS=outputs/base-direct.jsonl
 export VISIONGYM_FINETUNED_PREDICTIONS=outputs/lora-direct.jsonl
 export VISIONGYM_EXPERIMENT_DIR=experiments/a100-baseline
+export VISIONGYM_BASE_LABEL="Base direct"
+export VISIONGYM_FINETUNED_LABEL="LoRA direct"
 ```
 
 This makes the deployed demo useful even when a large VLM is not served on the web server itself. When `VISIONGYM_EXPERIMENT_DIR` points at an ingested experiment bundle, the demo also exposes the run comparison, paired improvement/regression table, and representative failure browser.
@@ -298,7 +312,7 @@ These are real measurements from the checked-in 1,400-question benchmark (400 ID
 
 | Check | Result |
 |---|---:|
-| Core tests | 11 passed |
+| Core tests | 12 passed |
 | Public sample scenes | 22 |
 | Public sample benchmark QA | 42 |
 | ID sample QA | 12 |
@@ -315,6 +329,14 @@ These are real measurements from the checked-in 1,400-question benchmark (400 ID
 | Qwen3-VL-2B + VisionGym LoRA | few-shot | 56.43% | **66.50%** | **50.85%** | 52.40% | 14.10pp | 60.6 ms |
 
 LoRA direct is the representative model because it has the strongest overall and OOD accuracy. Against Base direct, it improves overall accuracy by 9.35 percentage points, ID accuracy by 12.25 points, OOD accuracy by 8.20 points, and multi-hop accuracy by 5.65 points. LoRA few-shot remains the strongest variant for ID and multi-hop accuracy. Full metrics, scored predictions, failures, plots, and comparison CSVs are under `reports/`.
+
+### What the fine-tuning actually changed
+
+The paired 1,400-sample comparison shows that LoRA direct fixed **243** Base-direct mistakes while regressing on **112** previously correct samples, for a net gain of **131** corrected samples. The largest task-level gain was relative ordering, which improved from **15.69% to 56.86% (+41.18pp)**. Multi-hop improved from **42.94% to 48.59% (+5.65pp)**.
+
+The gain was not universal. `between` fell from **35.80% to 32.10% (-3.70pp)**, and the OOD shape split fell from **55.50% to 50.00% (-5.50pp)** even though aggregate OOD accuracy increased. This is the clearest remaining limitation: the LoRA adapter improved the synthetic reasoning domain overall, but it did not uniformly improve every compositional relation or every distribution shift.
+
+The strongest OOD gains for LoRA direct were occlusion (**43.00% → 59.50%**) and background shift (**58.50% → 71.00%**). These measured differences are why VisionGym keeps paired examples and task/domain breakdowns instead of reporting only a single aggregate score.
 
 ![Measured Base vs LoRA comparison](reports/presentation/screenshots/11-base-vs-lora-comparison.png)
 

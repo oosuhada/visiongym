@@ -1,0 +1,4 @@
+baseline,candidate,paired_samples,baseline_accuracy,candidate_accuracy,accuracy_delta,improved,regressed,both_correct,both_wrong,net_fixed_samples
+base-direct,base-fewshot,1400,0.4928571428571429,0.545,0.05214285714285716,142,69,621,568,73
+base-direct,lora-direct,1400,0.4928571428571429,0.5864285714285714,0.09357142857142853,243,112,578,467,131
+base-direct,lora-fewshot,1400,0.4928571428571429,0.5642857142857143,0.0714285714285714,226,126,564,484,100
