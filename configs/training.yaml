@@ -1,0 +1,18 @@
+model_name: Qwen/Qwen3-VL-2B-Instruct
+output_dir: checkpoints/visiongym-qwen3-vl-2b-lora
+train_jsonl: data/generated/train.jsonl
+validation_jsonl: data/generated/validation.jsonl
+epochs: 1
+learning_rate: 0.0002
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+max_samples: 4000
+include_tasks: []
+curriculum: false
+bf16: true
+gradient_checkpointing: true
+load_in_4bit: true
+
