@@ -1,0 +1,6 @@
+ood_type,accuracy,samples
+background,0.71,200
+count,0.49,200
+occlusion,0.595,200
+palette,0.5,200
+shape,0.5,200
