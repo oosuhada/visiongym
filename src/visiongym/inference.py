@@ -108,9 +108,13 @@ class TransformersVLM:
             base_model = base_model.to(self.device)
         self.model = base_model.eval()
 
-    def predict(self, image: Image.Image, question: str, prompt_mode: str = "direct", max_new_tokens: int = 48) -> str:
+        if hasattr(self.processor, "tokenizer"):
+            self.processor.tokenizer.padding_side = "left"
+
+    @staticmethod
+    def _conversation(image: Image.Image, question: str, prompt_mode: str) -> list[dict[str, Any]]:
         prompt = build_prompt(question, prompt_mode)
-        messages = [
+        return [
             {
                 "role": "user",
                 "content": [
@@ -119,6 +123,9 @@ class TransformersVLM:
                 ],
             }
         ]
+
+    def predict(self, image: Image.Image, question: str, prompt_mode: str = "direct", max_new_tokens: int = 48) -> str:
+        messages = self._conversation(image, question, prompt_mode)
         inputs = self.processor.apply_chat_template(
             messages,
             tokenize=True,
@@ -135,6 +142,145 @@ class TransformersVLM:
         generated = generated[:, input_length:]
         return self.processor.batch_decode(generated, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0].strip()
 
+    def predict_batch(
+        self,
+        images: list[Image.Image],
+        questions: list[str],
+        prompt_mode: str = "direct",
+        max_new_tokens: int = 48,
+    ) -> list[str]:
+        if not images:
+            return []
+        if len(images) != len(questions):
+            raise ValueError("images and questions must have the same length")
+        conversations = [
+            self._conversation(image=image, question=question, prompt_mode=prompt_mode)
+            for image, question in zip(images, questions)
+        ]
+        inputs = self.processor.apply_chat_template(
+            conversations,
+            tokenize=True,
+            add_generation_prompt=True,
+            return_dict=True,
+            return_tensors="pt",
+            processor_kwargs={"padding": True},
+        )
+        inputs.pop("token_type_ids", None)
+        model_device = next(self.model.parameters()).device
+        inputs = {key: value.to(model_device) if hasattr(value, "to") else value for key, value in inputs.items()}
+        try:
+            with self.torch.inference_mode():
+                generated = self.model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
+        except self.torch.cuda.OutOfMemoryError as exc:
+            if self.device == "cuda":
+                self.torch.cuda.empty_cache()
+            raise RuntimeError(
+                f"CUDA out of memory during batch inference with batch size {len(images)}. "
+                "Retry with a smaller --batch-size."
+            ) from exc
+        input_length = inputs["input_ids"].shape[1]
+        generated = generated[:, input_length:]
+        return [
+            text.strip()
+            for text in self.processor.batch_decode(
+                generated,
+                skip_special_tokens=True,
+                clean_up_tokenization_spaces=False,
+            )
+        ]
+
+
+def _iter_batches(records: list[dict[str, Any]], batch_size: int) -> list[list[dict[str, Any]]]:
+    if batch_size < 1:
+        raise ValueError("batch_size must be at least 1")
+    return [records[index : index + batch_size] for index in range(0, len(records), batch_size)]
+
+
+def _run_with_runner(
+    runner: TransformersVLM,
+    records: list[dict[str, Any]],
+    dataset_path: Path,
+    output_path: str | Path,
+    model_name: str,
+    prompt_mode: str,
+    adapter_path: str | None,
+    batch_size: int,
+    max_new_tokens: int,
+) -> list[dict[str, Any]]:
+    predictions: list[dict[str, Any]] = []
+    output = Path(output_path)
+    started_run = time.perf_counter()
+    if runner.device == "cuda":
+        runner.torch.cuda.reset_peak_memory_stats()
+
+    progress = tqdm(total=len(records), desc=f"Inference {model_name} [{prompt_mode}] b{batch_size}")
+    for batch in _iter_batches(records, batch_size):
+        images: list[Image.Image] = []
+        batch_predictions: list[str] = []
+        batch_latency = 0.0
+        try:
+            for sample in batch:
+                image_path = dataset_path.parent / sample["image"]
+                with Image.open(image_path) as image_handle:
+                    images.append(image_handle.convert("RGB").copy())
+            batch_started = time.perf_counter()
+            batch_predictions = runner.predict_batch(
+                images=images,
+                questions=[str(sample["question"]) for sample in batch],
+                prompt_mode=prompt_mode,
+                max_new_tokens=max_new_tokens,
+            )
+            batch_latency = time.perf_counter() - batch_started
+        finally:
+            for image in images:
+                image.close()
+
+        if len(batch_predictions) != len(batch):
+            raise RuntimeError(
+                f"Model returned {len(batch_predictions)} predictions for a batch of {len(batch)} samples."
+            )
+        sample_latency = batch_latency / len(batch)
+        throughput = len(batch) / batch_latency if batch_latency > 0 else None
+        for sample, prediction in zip(batch, batch_predictions):
+            predictions.append(
+                {
+                    "sample_id": sample["sample_id"],
+                    "prediction": prediction,
+                    "latency_seconds": sample_latency,
+                    "batch_latency_seconds": batch_latency,
+                    "batch_size": len(batch),
+                    "throughput_samples_per_second": throughput,
+                    "model": model_name,
+                    "prompt_mode": prompt_mode,
+                    "adapter_path": adapter_path,
+                    "device": runner.device,
+                }
+            )
+        progress.update(len(batch))
+    progress.close()
+
+    wall_seconds = time.perf_counter() - started_run
+    peak_vram_gb = None
+    if runner.device == "cuda":
+        peak_vram_gb = runner.torch.cuda.max_memory_allocated() / (1024**3)
+    write_jsonl(output, predictions)
+    metadata = {
+        "model": model_name,
+        "prompt_mode": prompt_mode,
+        "adapter_path": adapter_path,
+        "device": runner.device,
+        "configured_batch_size": batch_size,
+        "samples": len(records),
+        "max_new_tokens": max_new_tokens,
+        "wall_seconds": wall_seconds,
+        "throughput_samples_per_second": (len(records) / wall_seconds) if wall_seconds > 0 else None,
+        "peak_vram_gb": peak_vram_gb,
+    }
+    metadata_path = output.with_suffix(".meta.json")
+    metadata_path.parent.mkdir(parents=True, exist_ok=True)
+    metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return predictions
+
 
 def run_inference(
     dataset_path: str | Path,
@@ -145,6 +291,8 @@ def run_inference(
     limit: int | None = None,
     load_in_4bit: bool = False,
     device: str = "auto",
+    batch_size: int = 1,
+    max_new_tokens: int = 48,
 ) -> list[dict[str, Any]]:
     dataset_path = Path(dataset_path)
     records = read_jsonl(dataset_path)
@@ -156,27 +304,64 @@ def run_inference(
         load_in_4bit=load_in_4bit,
         device=device,
     )
-    predictions: list[dict[str, Any]] = []
-    for sample in tqdm(records, desc=f"Inference {model_name}"):
-        image_path = dataset_path.parent / sample["image"]
-        with Image.open(image_path) as image_handle:
-            image = image_handle.convert("RGB")
-            started = time.perf_counter()
-            prediction = runner.predict(image=image, question=sample["question"], prompt_mode=prompt_mode)
-            latency = time.perf_counter() - started
-        predictions.append(
-            {
-                "sample_id": sample["sample_id"],
-                "prediction": prediction,
-                "latency_seconds": latency,
-                "model": model_name,
-                "prompt_mode": prompt_mode,
-                "adapter_path": adapter_path,
-                "device": runner.device,
-            }
+    return _run_with_runner(
+        runner=runner,
+        records=records,
+        dataset_path=dataset_path,
+        output_path=output_path,
+        model_name=model_name,
+        prompt_mode=prompt_mode,
+        adapter_path=adapter_path,
+        batch_size=batch_size,
+        max_new_tokens=max_new_tokens,
+    )
+
+
+def run_prompt_sweep(
+    dataset_path: str | Path,
+    output_dir: str | Path,
+    model_name: str,
+    prompt_modes: list[str],
+    adapter_path: str | None = None,
+    limit: int | None = None,
+    load_in_4bit: bool = False,
+    device: str = "auto",
+    batch_size: int = 1,
+    max_new_tokens: int = 48,
+) -> dict[str, str]:
+    if not prompt_modes:
+        raise ValueError("prompt_modes must contain at least one mode")
+    invalid = [mode for mode in prompt_modes if mode not in PROMPT_MODES]
+    if invalid:
+        raise ValueError(f"Unsupported prompt modes: {invalid}. Choose from {sorted(PROMPT_MODES)}")
+    dataset = Path(dataset_path)
+    records = read_jsonl(dataset)
+    if limit is not None:
+        records = records[:limit]
+    output = Path(output_dir)
+    output.mkdir(parents=True, exist_ok=True)
+    runner = TransformersVLM(
+        model_name=model_name,
+        adapter_path=adapter_path,
+        load_in_4bit=load_in_4bit,
+        device=device,
+    )
+    results: dict[str, str] = {}
+    for mode in prompt_modes:
+        prediction_path = output / f"{mode}.jsonl"
+        _run_with_runner(
+            runner=runner,
+            records=records,
+            dataset_path=dataset,
+            output_path=prediction_path,
+            model_name=model_name,
+            prompt_mode=mode,
+            adapter_path=adapter_path,
+            batch_size=batch_size,
+            max_new_tokens=max_new_tokens,
         )
-    write_jsonl(output_path, predictions)
-    return predictions
+        results[mode] = str(prediction_path)
+    return results
 
 
 def write_oracle_predictions(dataset_path: str | Path, output_path: str | Path) -> None:
