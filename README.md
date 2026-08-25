@@ -110,8 +110,11 @@ visiongym infer \
   --output outputs/base-direct.jsonl \
   --model Qwen/Qwen3-VL-2B-Instruct \
   --prompt-mode direct \
+  --device auto \
   --load-in-4bit
 ```
+
+`--device auto` selects CUDA first, then Apple MPS, then CPU. The `--load-in-4bit` path is intentionally restricted to CUDA because it uses bitsandbytes; omit it for Apple Silicon local smoke tests.
 
 Prompt modes currently supported:
 
@@ -248,13 +251,15 @@ export VISIONGYM_FINETUNED_PREDICTIONS=outputs/lora-direct.jsonl
 
 This makes the deployed demo useful even when a large VLM is not served on the web server itself.
 
+Live demo: https://visiongym.oosu.dev
+
 ## Current measured status
 
 The repository does **not** invent model metrics. Current checked-in/local verification is:
 
 | Check | Result |
 |---|---:|
-| Core tests | 4 passed |
+| Core tests | 5 passed |
 | Public sample scenes | 22 |
 | Public sample benchmark QA | 42 |
 | ID sample QA | 12 |

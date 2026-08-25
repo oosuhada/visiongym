@@ -5,6 +5,7 @@ from pathlib import Path
 from visiongym.dataset import generate_single_split
 from visiongym.evaluation import evaluate_records, normalize_answer, read_jsonl
 from visiongym.geometry import overlaps
+from visiongym.inference import resolve_device
 
 
 def test_answer_normalization() -> None:
@@ -41,3 +42,15 @@ def test_occlusion_split_contains_overlap(tmp_path: Path) -> None:
         ax1, ay1, ax2, ay2 = first["bbox"]
         bx1, by1, bx2, by2 = last["bbox"]
         assert ax1 < bx2 and ax2 > bx1 and ay1 < by2 and ay2 > by1
+
+
+def test_cpu_device_rejects_bitsandbytes_4bit() -> None:
+    import torch
+
+    assert resolve_device(torch, requested="cpu", load_in_4bit=False) == "cpu"
+    try:
+        resolve_device(torch, requested="cpu", load_in_4bit=True)
+    except RuntimeError as exc:
+        assert "CUDA" in str(exc)
+    else:
+        raise AssertionError("4-bit CPU loading must be rejected")
