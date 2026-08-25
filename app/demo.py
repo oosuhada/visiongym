@@ -150,8 +150,11 @@ def show_experiment_failure(key: str) -> tuple[str | None, str, str, str, str]:
 
 
 def build_app() -> gr.Blocks:
-    with gr.Blocks(title="VisionGym") as demo:
-        gr.Markdown("# VisionGym\nSynthetic visual reasoning generator and benchmark result viewer.")
+    with gr.Blocks(title="VLM Reasoning Lab") as demo:
+        gr.Markdown(
+            "# VLM Reasoning Lab\n"
+            "Synthetic VLM reasoning benchmark, fine-tuning, and measured failure analysis."
+        )
 
         with gr.Tab("Generate Problem"):
             with gr.Row():
@@ -260,7 +263,7 @@ def build_app() -> gr.Blocks:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="VisionGym Gradio demo")
+    parser = argparse.ArgumentParser(description="VLM Reasoning Lab Gradio demo")
     parser.add_argument("--host", default=os.getenv("VISIONGYM_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.getenv("VISIONGYM_PORT", "7860")))
     args = parser.parse_args()

@@ -13,7 +13,10 @@ from visiongym.sft import prepare_sft_dataset, train_lora
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="visiongym", description="VisionGym synthetic visual reasoning lab")
+    parser = argparse.ArgumentParser(
+        prog="vlm-reasoning-lab",
+        description="Synthetic VLM reasoning benchmark, fine-tuning, and failure-analysis lab",
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     generate = subparsers.add_parser("generate", help="Generate a synthetic visual reasoning dataset")

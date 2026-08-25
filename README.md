@@ -1,8 +1,16 @@
-# VisionGym
+# VLM Reasoning Lab
 
-VisionGym is a synthetic visual reasoning lab for measuring how Vision-Language Models handle spatial relations, counting, distance, comparison, multi-hop reasoning, and distribution shift.
+**Synthetic VLM reasoning benchmark, fine-tuning, and failure-analysis lab with automatic ground truth.**
 
-The core idea is simple: every image is rendered from programmatically known object metadata, so the question and ground truth are generated automatically. No human labeling is required.
+[Live Demo](https://visiongym.oosu.dev) · [Measured Results](#measured-a100-results) · [Reproduce](#quick-start-cpu-pipeline)
+
+VLM Reasoning Lab measures how Vision-Language Models handle spatial relations, counting, distance, comparison, multi-hop reasoning, and distribution shift. Every image is rendered from programmatically known object metadata, so both the question and ground truth are generated automatically without human labeling.
+
+### Measured headline
+
+On the same 1,400-question benchmark, QLoRA fine-tuning improved **overall accuracy from 49.29% to 58.64%** and **OOD accuracy from 47.70% to 55.90%** versus the Base direct run. Paired analysis shows **243 Base errors fixed, 112 regressions introduced, and +131 net corrected samples**.
+
+The project is intentionally an evaluation and adaptation lab rather than a general-purpose vision application: generate controlled tasks, measure model behavior, fine-tune, and inspect exactly where capability improves or regresses.
 
 ## What actually runs
 
@@ -48,7 +56,7 @@ Scene metadata includes object ID, shape, color, bounding box, center coordinate
 
 ## OOD benchmark
 
-The benchmark is not a random split only. `visiongym generate` creates a normal ID test split plus explicit OOD conditions:
+The benchmark is not a random split only. `vlm-reasoning-lab generate` creates a normal ID test split plus explicit OOD conditions:
 
 | OOD condition | Distribution shift |
 |---|---|
@@ -73,7 +81,7 @@ pip install -e .
 python generate.py --count 100 --split train --output data/generated
 
 # Or generate the full ID + OOD benchmark from YAML.
-visiongym generate --config configs/dataset.yaml --output data/generated
+vlm-reasoning-lab generate --config configs/dataset.yaml --output data/generated
 ```
 
 Generated files look like this:
@@ -96,7 +104,7 @@ data/generated/
 
 A tiny reproducible dataset is committed under `data/sample/` so the schema and rendered scenes can be inspected without generating a large dataset.
 
-![VisionGym sample scene](data/sample/images/test/test_000000.png)
+![VLM Reasoning Lab sample scene](data/sample/images/test/test_000000.png)
 
 ## VLM baseline
 
@@ -105,7 +113,7 @@ The default Colab model is [`Qwen/Qwen3-VL-2B-Instruct`](https://huggingface.co/
 ```bash
 pip install -e '.[vlm]'
 
-visiongym infer \
+vlm-reasoning-lab infer \
   --dataset data/generated/benchmark.jsonl \
   --output outputs/base-direct.jsonl \
   --model Qwen/Qwen3-VL-2B-Instruct \
@@ -131,7 +139,7 @@ These make it possible to compare prompt changes against fine-tuning on exactly 
 To avoid loading the model again for every prompt mode, run a prompt sweep:
 
 ```bash
-visiongym infer-prompts \
+vlm-reasoning-lab infer-prompts \
   --dataset data/generated/benchmark.jsonl \
   --output-dir outputs/base-prompts \
   --model Qwen/Qwen3-VL-2B-Instruct \
@@ -148,14 +156,14 @@ The model is loaded once and reused for all requested prompt modes, while each m
 Prediction JSONL needs only `sample_id` and `prediction`; inference also records latency and model metadata.
 
 ```bash
-visiongym evaluate \
+vlm-reasoning-lab evaluate \
   --dataset data/generated/benchmark.jsonl \
   --predictions outputs/base-direct.jsonl \
   --output reports/base-direct \
   --model Qwen/Qwen3-VL-2B-Instruct \
   --prompt-mode direct
 
-visiongym report \
+vlm-reasoning-lab report \
   --metrics reports/base-direct/metrics.json \
   --output reports/base-direct
 ```
@@ -199,7 +207,7 @@ OOD failures keep their underlying reasoning category as well. For example, a wr
 Colab outputs can be downloaded as a ZIP or copied as a directory and validated/rebuilt locally in one command:
 
 ```bash
-visiongym ingest-results \
+vlm-reasoning-lab ingest-results \
   --bundle ~/Downloads/visiongym-results.zip \
   --dataset data/generated/benchmark.jsonl \
   --output experiments/a100-baseline \
@@ -211,7 +219,7 @@ The importer discovers prediction JSONL files, checks missing/duplicate/unexpect
 For the checked-in measured runs, a compact analysis bundle can be rebuilt without duplicating raw predictions:
 
 ```bash
-visiongym analyze-reports \
+vlm-reasoning-lab analyze-reports \
   reports/base-direct \
   reports/base-fewshot \
   reports/lora-direct \
@@ -228,11 +236,11 @@ The deployed demo loads `reports/measured/` automatically when present.
 ```bash
 pip install -e '.[train]'
 
-visiongym prepare-sft \
+vlm-reasoning-lab prepare-sft \
   --dataset data/generated/train.jsonl \
   --output data/generated/train_sft.jsonl
 
-visiongym train-lora --config configs/training.yaml
+vlm-reasoning-lab train-lora --config configs/training.yaml
 ```
 
 The training config exposes the experiment knobs that matter for this project:
@@ -246,7 +254,7 @@ The training config exposes the experiment knobs that matter for this project:
 After training, use the same inference and evaluation pipeline with the adapter:
 
 ```bash
-visiongym infer \
+vlm-reasoning-lab infer \
   --dataset data/generated/benchmark.jsonl \
   --output outputs/lora-direct.jsonl \
   --model Qwen/Qwen3-VL-2B-Instruct \
@@ -255,13 +263,13 @@ visiongym infer \
   --load-in-4bit \
   --batch-size 8
 
-visiongym evaluate \
+vlm-reasoning-lab evaluate \
   --dataset data/generated/benchmark.jsonl \
   --predictions outputs/lora-direct.jsonl \
   --output reports/lora-direct \
   --model Qwen/Qwen3-VL-2B-Instruct+VisionGym-LoRA
 
-visiongym compare \
+vlm-reasoning-lab compare \
   reports/base-direct/metrics.json \
   reports/lora-direct/metrics.json \
   --output reports/base-vs-lora.csv
@@ -325,8 +333,8 @@ These are real measurements from the checked-in 1,400-question benchmark (400 ID
 |---|---|---:|---:|---:|---:|---:|---:|
 | Qwen3-VL-2B Base | direct | 49.29% | 53.25% | 42.94% | 47.70% | 5.55pp | 194.7 ms |
 | Qwen3-VL-2B Base | few-shot | 54.50% | 60.50% | 46.89% | 52.10% | 8.40pp | 42.8 ms |
-| Qwen3-VL-2B + VisionGym LoRA | direct | **58.64%** | 65.50% | 48.59% | **55.90%** | 9.60pp | 60.0 ms |
-| Qwen3-VL-2B + VisionGym LoRA | few-shot | 56.43% | **66.50%** | **50.85%** | 52.40% | 14.10pp | 60.6 ms |
+| Qwen3-VL-2B + VLM Reasoning Lab LoRA | direct | **58.64%** | 65.50% | 48.59% | **55.90%** | 9.60pp | 60.0 ms |
+| Qwen3-VL-2B + VLM Reasoning Lab LoRA | few-shot | 56.43% | **66.50%** | **50.85%** | 52.40% | 14.10pp | 60.6 ms |
 
 LoRA direct is the representative model because it has the strongest overall and OOD accuracy. Against Base direct, it improves overall accuracy by 9.35 percentage points, ID accuracy by 12.25 points, OOD accuracy by 8.20 points, and multi-hop accuracy by 5.65 points. LoRA few-shot remains the strongest variant for ID and multi-hop accuracy. Full metrics, scored predictions, failures, plots, and comparison CSVs are under `reports/`.
 
@@ -336,14 +344,14 @@ The paired 1,400-sample comparison shows that LoRA direct fixed **243** Base-dir
 
 The gain was not universal. `between` fell from **35.80% to 32.10% (-3.70pp)**, and the OOD shape split fell from **55.50% to 50.00% (-5.50pp)** even though aggregate OOD accuracy increased. This is the clearest remaining limitation: the LoRA adapter improved the synthetic reasoning domain overall, but it did not uniformly improve every compositional relation or every distribution shift.
 
-The strongest OOD gains for LoRA direct were occlusion (**43.00% → 59.50%**) and background shift (**58.50% → 71.00%**). These measured differences are why VisionGym keeps paired examples and task/domain breakdowns instead of reporting only a single aggregate score.
+The strongest OOD gains for LoRA direct were occlusion (**43.00% → 59.50%**) and background shift (**58.50% → 71.00%**). These measured differences are why the lab keeps paired examples and task/domain breakdowns instead of reporting only a single aggregate score.
 
 ![Measured Base vs LoRA comparison](reports/presentation/screenshots/11-base-vs-lora-comparison.png)
 
 ## Repository layout
 
 ```text
-visiongym/
+vlm-reasoning-lab/
 ├── app/
 │   └── demo.py
 ├── configs/
@@ -387,7 +395,3 @@ visiongym/
 - Hugging Face caches, model weights, checkpoints, `.env`, and local artifacts are ignored.
 - Only the small `data/sample/` fixture is committed.
 - No proprietary research notes or private PYLER materials are included in this repository.
-
-## License
-
-MIT
