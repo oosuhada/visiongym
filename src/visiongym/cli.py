@@ -32,6 +32,7 @@ def _build_parser() -> argparse.ArgumentParser:
     infer.add_argument("--limit", type=int, default=None)
     infer.add_argument("--load-in-4bit", action="store_true")
     infer.add_argument("--device", default="auto", choices=["auto", "cuda", "mps", "cpu"])
+    infer.add_argument("--batch-size", type=int, default=1, help="Images processed per generation batch")
 
     oracle = subparsers.add_parser("oracle", help="Create perfect predictions for evaluation smoke tests")
     oracle.add_argument("--dataset", required=True)
@@ -88,6 +89,7 @@ def main() -> None:
             limit=args.limit,
             load_in_4bit=args.load_in_4bit,
             device=args.device,
+            batch_size=args.batch_size,
         )
         print(json.dumps({"predictions": len(records), "output": args.output}, ensure_ascii=False, indent=2))
     elif args.command == "oracle":
@@ -118,4 +120,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

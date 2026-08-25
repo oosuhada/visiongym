@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from visiongym.dataset import generate_single_split
 from visiongym.evaluation import evaluate_records, normalize_answer, read_jsonl
 from visiongym.geometry import overlaps
-from visiongym.inference import resolve_device
+from visiongym.inference import resolve_device, run_inference
 
 
 def test_answer_normalization() -> None:
@@ -59,3 +59,14 @@ def test_cpu_device_rejects_bitsandbytes_4bit() -> None:
         assert "CUDA" in str(exc)
     else:
         raise AssertionError("4-bit CPU loading must be rejected")
+
+
+def test_inference_rejects_invalid_batch_size(tmp_path: Path) -> None:
+    dataset = tmp_path / "empty.jsonl"
+    dataset.write_text("", encoding="utf-8")
+    try:
+        run_inference(dataset, tmp_path / "predictions.jsonl", "unused", batch_size=0)
+    except ValueError as exc:
+        assert "batch_size" in str(exc)
+    else:
+        raise AssertionError("batch_size=0 must be rejected")
