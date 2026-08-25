@@ -111,10 +111,13 @@ visiongym infer \
   --model Qwen/Qwen3-VL-2B-Instruct \
   --prompt-mode direct \
   --device auto \
+  --batch-size 8 \
   --load-in-4bit
 ```
 
 `--device auto` selects CUDA first, then Apple MPS, then CPU. The `--load-in-4bit` path is intentionally restricted to CUDA because it uses bitsandbytes; omit it for Apple Silicon local smoke tests.
+
+On a large GPU such as an A100, increase `--batch-size` gradually (for example 4 → 8 → 16) while watching VRAM. Every inference output also gets a sibling `.meta.json` containing wall time, effective samples/sec, configured batch size, and peak CUDA VRAM. CUDA OOM during a batch is converted into a clear retry-with-smaller-batch error.
 
 Prompt modes currently supported:
 
@@ -124,6 +127,21 @@ Prompt modes currently supported:
 - `fewshot`
 
 These make it possible to compare prompt changes against fine-tuning on exactly the same images and ground truth.
+
+To avoid loading the model again for every prompt mode, run a prompt sweep:
+
+```bash
+visiongym infer-prompts \
+  --dataset data/generated/benchmark.jsonl \
+  --output-dir outputs/base-prompts \
+  --model Qwen/Qwen3-VL-2B-Instruct \
+  --prompt-modes direct reasoning fewshot \
+  --device cuda \
+  --batch-size 8 \
+  --load-in-4bit
+```
+
+The model is loaded once and reused for all requested prompt modes, while each mode still gets its own prediction JSONL and runtime metadata file.
 
 ## Automatic evaluation
 
@@ -276,7 +294,7 @@ The repository does **not** invent model metrics. Current checked-in/local verif
 
 | Check | Result |
 |---|---:|
-| Core tests | 5 passed |
+| Core tests | 10 passed |
 | Public sample scenes | 22 |
 | Public sample benchmark QA | 42 |
 | ID sample QA | 12 |
