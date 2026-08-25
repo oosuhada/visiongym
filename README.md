@@ -111,11 +111,13 @@ visiongym infer \
   --model Qwen/Qwen3-VL-2B-Instruct \
   --prompt-mode direct \
   --device auto \
-  --load-in-4bit \
-  --batch-size 8
+  --batch-size 8 \
+  --load-in-4bit
 ```
 
 `--device auto` selects CUDA first, then Apple MPS, then CPU. The `--load-in-4bit` path is intentionally restricted to CUDA because it uses bitsandbytes; omit it for Apple Silicon local smoke tests.
+
+On a large GPU such as an A100, increase `--batch-size` gradually (for example 4 → 8 → 16) while watching VRAM. Every inference output also gets a sibling `.meta.json` containing wall time, effective samples/sec, configured batch size, and peak CUDA VRAM. CUDA OOM during a batch is converted into a clear retry-with-smaller-batch error.
 
 Prompt modes currently supported:
 
@@ -125,6 +127,21 @@ Prompt modes currently supported:
 - `fewshot`
 
 These make it possible to compare prompt changes against fine-tuning on exactly the same images and ground truth.
+
+To avoid loading the model again for every prompt mode, run a prompt sweep:
+
+```bash
+visiongym infer-prompts \
+  --dataset data/generated/benchmark.jsonl \
+  --output-dir outputs/base-prompts \
+  --model Qwen/Qwen3-VL-2B-Instruct \
+  --prompt-modes direct reasoning fewshot \
+  --device cuda \
+  --batch-size 8 \
+  --load-in-4bit
+```
+
+The model is loaded once and reused for all requested prompt modes, while each mode still gets its own prediction JSONL and runtime metadata file.
 
 ## Automatic evaluation
 
@@ -175,6 +192,22 @@ Errors are automatically grouped into practical categories such as:
 - OOD failure
 
 The raw image, question, ground truth, model prediction, task, difficulty, and OOD type remain in `failures.jsonl` for manual inspection.
+
+OOD failures keep their underlying reasoning category as well. For example, a wrong counting answer in `ood_count` remains a `counting_error` and is separately marked as an OOD failure, instead of losing the causal error type under a generic OOD label. Reports also include `task_domain_accuracy.csv`, which makes task × ID/OOD degradation directly inspectable.
+
+## Import Colab experiment results
+
+Colab outputs can be downloaded as a ZIP or copied as a directory and validated/rebuilt locally in one command:
+
+```bash
+visiongym ingest-results \
+  --bundle ~/Downloads/visiongym-results.zip \
+  --dataset data/generated/benchmark.jsonl \
+  --output experiments/a100-baseline \
+  --strict
+```
+
+The importer discovers prediction JSONL files, checks missing/duplicate/unexpected sample IDs, copies the raw predictions, re-runs the current evaluator, generates per-run charts/reports, creates a cross-run `comparison.csv`, and produces a stratified `failure_gallery.csv`. When multiple runs are present it also selects the base `direct` run and writes `pairwise_summary.csv`, `pairwise_task_delta.csv`, and `pairwise_examples.csv`, so prompt/LoRA runs can be inspected as samples fixed versus samples regressed instead of only comparing aggregate accuracy. This means Colab can focus only on expensive GPU inference/training while the canonical evaluation logic remains reproducible in the repository.
 
 ## LoRA / QLoRA fine-tuning
 
@@ -238,10 +271,11 @@ pip install -e '.[demo]'
 python app/demo.py --host 0.0.0.0 --port 7860
 ```
 
-The demo has two surfaces:
+The demo has three surfaces:
 
 1. **Generate Problem** — choose ID/OOD condition and seed, then inspect the generated image, question, ground truth, task, and difficulty.
 2. **Result Viewer** — inspect benchmark records and optionally compare precomputed base/fine-tuned predictions.
+3. **Experiment Analysis** — inspect imported run comparisons, paired improvements/regressions, and representative failures when an experiment bundle is configured.
 
 The repository includes a 24-sample measured showcase under `data/showcase/`. It is loaded by default and covers every benchmark split and reasoning task, with Base few-shot and VisionGym LoRA direct predictions side by side.
 
@@ -251,9 +285,10 @@ Prediction files can be injected without changing code:
 export VISIONGYM_DATASET=data/generated/benchmark.jsonl
 export VISIONGYM_BASE_PREDICTIONS=outputs/base-direct.jsonl
 export VISIONGYM_FINETUNED_PREDICTIONS=outputs/lora-direct.jsonl
+export VISIONGYM_EXPERIMENT_DIR=experiments/a100-baseline
 ```
 
-This makes the deployed demo useful even when a large VLM is not served on the web server itself.
+This makes the deployed demo useful even when a large VLM is not served on the web server itself. When `VISIONGYM_EXPERIMENT_DIR` points at an ingested experiment bundle, the demo also exposes the run comparison, paired improvement/regression table, and representative failure browser.
 
 Live demo: https://visiongym.oosu.dev
 
@@ -263,7 +298,7 @@ These are real measurements from the checked-in 1,400-question benchmark (400 ID
 
 | Check | Result |
 |---|---:|
-| Core tests | 6 passed |
+| Core tests | 11 passed |
 | Public sample scenes | 22 |
 | Public sample benchmark QA | 42 |
 | ID sample QA | 12 |
@@ -272,14 +307,14 @@ These are real measurements from the checked-in 1,400-question benchmark (400 ID
 | A100 baseline + QLoRA experiment | completed |
 | QLoRA training time | 9m 11s |
 
-| Model | Prompt | ID Accuracy | Multi-hop | OOD Accuracy | OOD Gap | Avg Latency |
-|---|---|---:|---:|---:|---:|---:|
-| Qwen3-VL-2B Base | direct | 53.25% | 42.94% | 47.70% | 5.55pp | 194.7 ms |
-| Qwen3-VL-2B Base | few-shot | 60.50% | 46.89% | 52.10% | 8.40pp | 42.8 ms |
-| Qwen3-VL-2B + VisionGym LoRA | direct | 65.50% | 48.59% | 55.90% | 9.60pp | 60.0 ms |
-| Qwen3-VL-2B + VisionGym LoRA | few-shot | **66.50%** | **50.85%** | 52.40% | 14.10pp | 60.6 ms |
+| Model | Prompt | Overall | ID Accuracy | Multi-hop | OOD Accuracy | OOD Gap | Avg Latency |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Qwen3-VL-2B Base | direct | 49.29% | 53.25% | 42.94% | 47.70% | 5.55pp | 194.7 ms |
+| Qwen3-VL-2B Base | few-shot | 54.50% | 60.50% | 46.89% | 52.10% | 8.40pp | 42.8 ms |
+| Qwen3-VL-2B + VisionGym LoRA | direct | **58.64%** | 65.50% | 48.59% | **55.90%** | 9.60pp | 60.0 ms |
+| Qwen3-VL-2B + VisionGym LoRA | few-shot | 56.43% | **66.50%** | **50.85%** | 52.40% | 14.10pp | 60.6 ms |
 
-LoRA direct is the best overall/OOD variant (58.64% overall, 55.90% OOD). LoRA few-shot has the strongest ID and multi-hop accuracy. Full metrics, scored predictions, failures, plots, and comparison CSVs are under `reports/`.
+LoRA direct is the representative model because it has the strongest overall and OOD accuracy. Against Base direct, it improves overall accuracy by 9.35 percentage points, ID accuracy by 12.25 points, OOD accuracy by 8.20 points, and multi-hop accuracy by 5.65 points. LoRA few-shot remains the strongest variant for ID and multi-hop accuracy. Full metrics, scored predictions, failures, plots, and comparison CSVs are under `reports/`.
 
 ![Measured Base vs LoRA comparison](reports/presentation/screenshots/11-base-vs-lora-comparison.png)
 
@@ -294,7 +329,8 @@ visiongym/
 │   ├── sample.yaml
 │   └── training.yaml
 ├── data/
-│   └── sample/
+│   ├── sample/
+│   └── showcase/
 ├── notebooks/
 │   ├── baseline.ipynb
 │   └── finetune.ipynb
@@ -302,6 +338,7 @@ visiongym/
 │   ├── cli.py
 │   ├── dataset.py
 │   ├── evaluation.py
+│   ├── experiments.py
 │   ├── geometry.py
 │   ├── inference.py
 │   ├── question_generator.py
@@ -310,6 +347,12 @@ visiongym/
 │   ├── scene_generator.py
 │   ├── schema.py
 │   └── sft.py
+├── reports/
+│   ├── base-direct/
+│   ├── base-fewshot/
+│   ├── lora-direct/
+│   ├── lora-fewshot/
+│   └── presentation/screenshots/
 ├── tests/
 ├── generate.py
 └── pyproject.toml

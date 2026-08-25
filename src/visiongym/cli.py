@@ -6,7 +6,8 @@ from pathlib import Path
 
 from visiongym.dataset import generate_from_config, generate_single_split
 from visiongym.evaluation import compare_metric_files, evaluate_files
-from visiongym.inference import run_inference, write_oracle_predictions
+from visiongym.experiments import ingest_results
+from visiongym.inference import run_inference, run_prompt_sweep, write_oracle_predictions
 from visiongym.reporting import create_report
 from visiongym.sft import prepare_sft_dataset, train_lora
 
@@ -32,7 +33,25 @@ def _build_parser() -> argparse.ArgumentParser:
     infer.add_argument("--limit", type=int, default=None)
     infer.add_argument("--load-in-4bit", action="store_true")
     infer.add_argument("--device", default="auto", choices=["auto", "cuda", "mps", "cpu"])
-    infer.add_argument("--batch-size", type=int, default=1, help="Images processed per generation batch")
+    infer.add_argument("--batch-size", type=int, default=1, help="Inference batch size; increase on GPUs with headroom")
+    infer.add_argument("--max-new-tokens", type=int, default=48)
+
+    sweep = subparsers.add_parser("infer-prompts", help="Evaluate multiple prompt modes while loading the VLM only once")
+    sweep.add_argument("--dataset", required=True)
+    sweep.add_argument("--output-dir", required=True)
+    sweep.add_argument("--model", default="Qwen/Qwen3-VL-2B-Instruct")
+    sweep.add_argument(
+        "--prompt-modes",
+        nargs="+",
+        default=["direct", "reasoning", "fewshot"],
+        choices=["direct", "json", "reasoning", "fewshot"],
+    )
+    sweep.add_argument("--adapter", default=None, help="Optional PEFT LoRA adapter path")
+    sweep.add_argument("--limit", type=int, default=None)
+    sweep.add_argument("--load-in-4bit", action="store_true")
+    sweep.add_argument("--device", default="auto", choices=["auto", "cuda", "mps", "cpu"])
+    sweep.add_argument("--batch-size", type=int, default=1)
+    sweep.add_argument("--max-new-tokens", type=int, default=48)
 
     oracle = subparsers.add_parser("oracle", help="Create perfect predictions for evaluation smoke tests")
     oracle.add_argument("--dataset", required=True)
@@ -60,6 +79,12 @@ def _build_parser() -> argparse.ArgumentParser:
     report = subparsers.add_parser("report", help="Generate CSV/chart/markdown summaries from metrics.json")
     report.add_argument("--metrics", required=True)
     report.add_argument("--output", required=True)
+
+    ingest = subparsers.add_parser("ingest-results", help="Ingest Colab result ZIP/directory and rebuild validated experiment reports")
+    ingest.add_argument("--bundle", required=True, help="Colab result directory or ZIP")
+    ingest.add_argument("--dataset", required=True, help="Benchmark JSONL used for the predictions")
+    ingest.add_argument("--output", required=True, help="Experiment output directory")
+    ingest.add_argument("--strict", action="store_true", help="Fail on missing, duplicate, or unexpected sample IDs")
 
     return parser
 
@@ -90,8 +115,23 @@ def main() -> None:
             load_in_4bit=args.load_in_4bit,
             device=args.device,
             batch_size=args.batch_size,
+            max_new_tokens=args.max_new_tokens,
         )
         print(json.dumps({"predictions": len(records), "output": args.output}, ensure_ascii=False, indent=2))
+    elif args.command == "infer-prompts":
+        outputs = run_prompt_sweep(
+            dataset_path=args.dataset,
+            output_dir=args.output_dir,
+            model_name=args.model,
+            prompt_modes=args.prompt_modes,
+            adapter_path=args.adapter,
+            limit=args.limit,
+            load_in_4bit=args.load_in_4bit,
+            device=args.device,
+            batch_size=args.batch_size,
+            max_new_tokens=args.max_new_tokens,
+        )
+        print(json.dumps({"outputs": outputs}, ensure_ascii=False, indent=2))
     elif args.command == "oracle":
         write_oracle_predictions(args.dataset, args.output)
         print(json.dumps({"output": args.output}, ensure_ascii=False, indent=2))
@@ -116,6 +156,9 @@ def main() -> None:
     elif args.command == "report":
         created = create_report(args.metrics, args.output)
         print(json.dumps({"created": [str(path) for path in created]}, ensure_ascii=False, indent=2))
+    elif args.command == "ingest-results":
+        manifest = ingest_results(args.bundle, args.dataset, args.output, strict=args.strict)
+        print(json.dumps(manifest, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

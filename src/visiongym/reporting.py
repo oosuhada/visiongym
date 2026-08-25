@@ -57,6 +57,20 @@ def create_report(metrics_path: str | Path, output_dir: str | Path) -> list[Path
         plt.close(figure)
         created.append(chart)
 
+    task_domain = metrics.get("by_task_domain", {})
+    if task_domain:
+        domains = sorted({domain for values in task_domain.values() for domain in values})
+        matrix_rows: list[dict[str, Any]] = []
+        for task, values in sorted(task_domain.items()):
+            row: dict[str, Any] = {"task": task}
+            for domain in domains:
+                row[domain] = values.get(domain, {}).get("accuracy")
+            matrix_rows.append(row)
+        matrix = pd.DataFrame(matrix_rows)
+        matrix_csv = output / "task_domain_accuracy.csv"
+        matrix.to_csv(matrix_csv, index=False)
+        created.append(matrix_csv)
+
     summary_path = output / "summary.md"
     summary_lines = [
         "# VisionGym Evaluation Summary",
@@ -78,6 +92,12 @@ def create_report(metrics_path: str | Path, output_dir: str | Path) -> list[Path
         summary_lines.extend(f"- {name}: {count}" for name, count in error_distribution.items())
     else:
         summary_lines.append("- No errors recorded.")
+    ood_errors = metrics.get("ood_error_distribution", {})
+    summary_lines.extend(["", "## OOD error distribution", ""])
+    if ood_errors:
+        summary_lines.extend(f"- {name}: {count}" for name, count in ood_errors.items())
+    else:
+        summary_lines.append("- No OOD errors recorded.")
     summary_path.write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
     created.append(summary_path)
     return created

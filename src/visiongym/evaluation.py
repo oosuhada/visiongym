@@ -63,8 +63,6 @@ def classify_error(sample: dict[str, Any], prediction: str) -> str:
     normalized_answer = normalize_answer(sample["answer"])
     if not normalized_prediction:
         return "answer_format_failure"
-    if sample.get("ood_type"):
-        return "ood_failure"
     task = sample.get("task", "")
     if task == "counting":
         return "counting_error"
@@ -109,6 +107,7 @@ def evaluate_records(
             "correct": correct,
             "latency_seconds": prediction_record.get("latency_seconds"),
             "error_type": None if correct else classify_error(sample, prediction),
+            "ood_failure": bool(sample.get("ood_type")) and not correct,
         }
         rows.append(row)
 
@@ -129,7 +128,13 @@ def evaluate_records(
     ood_accuracy = _accuracy(ood_rows)
     latency_values = [float(row["latency_seconds"]) for row in rows if row.get("latency_seconds") is not None]
     error_counts = Counter(row["error_type"] for row in rows if row["error_type"])
+    ood_error_counts = Counter(row["error_type"] for row in ood_rows if row["error_type"])
     missing_count = sum(row["sample_id"] not in predictions for row in rows)
+
+    task_domain: dict[str, dict[str, list[dict[str, Any]]]] = defaultdict(lambda: defaultdict(list))
+    for row in rows:
+        domain = row.get("ood_type") or "ID"
+        task_domain[row["task"]][domain].append(row)
 
     metrics: dict[str, Any] = {
         "model": model_name,
@@ -142,11 +147,20 @@ def evaluate_records(
         "ood_gap": (id_accuracy - ood_accuracy) if id_accuracy is not None and ood_accuracy is not None else None,
         "invalid_output_rate": sum(not row["normalized_prediction"] for row in rows) / len(rows) if rows else None,
         "average_latency_seconds": sum(latency_values) / len(latency_values) if latency_values else None,
+        "evaluation_schema_version": 2,
         "by_task": {key: {"accuracy": _accuracy(value), "samples": len(value)} for key, value in sorted(by_task.items())},
         "by_difficulty": {key: {"accuracy": _accuracy(value), "samples": len(value)} for key, value in sorted(by_difficulty.items())},
         "by_split": {key: {"accuracy": _accuracy(value), "samples": len(value)} for key, value in sorted(by_split.items())},
         "by_ood_type": {key: {"accuracy": _accuracy(value), "samples": len(value)} for key, value in sorted(by_ood.items())},
         "error_distribution": dict(error_counts.most_common()),
+        "ood_error_distribution": dict(ood_error_counts.most_common()),
+        "by_task_domain": {
+            task: {
+                domain: {"accuracy": _accuracy(domain_rows), "samples": len(domain_rows)}
+                for domain, domain_rows in sorted(domains.items())
+            }
+            for task, domains in sorted(task_domain.items())
+        },
     }
     return metrics, rows
 
@@ -167,9 +181,42 @@ def evaluate_files(
         json.dump(metrics, handle, ensure_ascii=False, indent=2)
     pd.DataFrame(rows).to_csv(output / "predictions_scored.csv", index=False)
     failures = [row for row in rows if not row["correct"]]
-    failures.sort(key=lambda row: (row.get("task", ""), row.get("sample_id", "")))
-    write_jsonl(output / "failures.jsonl", failures[:100])
+    write_jsonl(output / "failures.jsonl", select_representative_failures(failures, limit=100))
     return metrics
+
+
+def select_representative_failures(failures: list[dict[str, Any]], limit: int = 100) -> list[dict[str, Any]]:
+    """Return a deterministic, stratified failure sample across task/domain/error buckets."""
+    if limit <= 0 or not failures:
+        return []
+    buckets: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
+    for row in failures:
+        key = (
+            str(row.get("task") or "unknown"),
+            str(row.get("ood_type") or "ID"),
+            str(row.get("error_type") or "unknown"),
+        )
+        buckets[key].append(row)
+    for bucket_rows in buckets.values():
+        bucket_rows.sort(key=lambda row: str(row.get("sample_id", "")))
+
+    selected: list[dict[str, Any]] = []
+    keys = sorted(buckets)
+    index = 0
+    target = min(limit, len(failures))
+    while len(selected) < target:
+        added = False
+        for key in keys:
+            bucket_rows = buckets[key]
+            if index < len(bucket_rows):
+                selected.append(bucket_rows[index])
+                added = True
+                if len(selected) >= target:
+                    break
+        if not added:
+            break
+        index += 1
+    return selected
 
 
 def compare_metric_files(metric_paths: list[str | Path], output_path: str | Path | None = None) -> pd.DataFrame:
