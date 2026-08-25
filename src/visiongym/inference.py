@@ -109,22 +109,40 @@ class TransformersVLM:
         self.model = base_model.eval()
 
     def predict(self, image: Image.Image, question: str, prompt_mode: str = "direct", max_new_tokens: int = 48) -> str:
-        prompt = build_prompt(question, prompt_mode)
+        return self.predict_batch([image], [question], prompt_mode=prompt_mode, max_new_tokens=max_new_tokens)[0]
+
+    def predict_batch(
+        self,
+        images: list[Image.Image],
+        questions: list[str],
+        prompt_mode: str = "direct",
+        max_new_tokens: int = 48,
+    ) -> list[str]:
+        if len(images) != len(questions):
+            raise ValueError("images and questions must have the same length")
+        if not images:
+            return []
         messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image", "image": image},
-                    {"type": "text", "text": prompt},
-                ],
-            }
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "image": image},
+                        {"type": "text", "text": build_prompt(question, prompt_mode)},
+                    ],
+                }
+            ]
+            for image, question in zip(images, questions, strict=True)
         ]
+        if hasattr(self.processor, "tokenizer"):
+            self.processor.tokenizer.padding_side = "left"
         inputs = self.processor.apply_chat_template(
             messages,
             tokenize=True,
             add_generation_prompt=True,
             return_dict=True,
             return_tensors="pt",
+            padding=True,
         )
         inputs.pop("token_type_ids", None)
         model_device = next(self.model.parameters()).device
@@ -133,7 +151,14 @@ class TransformersVLM:
             generated = self.model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
         input_length = inputs["input_ids"].shape[1]
         generated = generated[:, input_length:]
-        return self.processor.batch_decode(generated, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0].strip()
+        return [
+            prediction.strip()
+            for prediction in self.processor.batch_decode(
+                generated,
+                skip_special_tokens=True,
+                clean_up_tokenization_spaces=False,
+            )
+        ]
 
 
 def run_inference(
@@ -145,11 +170,14 @@ def run_inference(
     limit: int | None = None,
     load_in_4bit: bool = False,
     device: str = "auto",
+    batch_size: int = 1,
 ) -> list[dict[str, Any]]:
     dataset_path = Path(dataset_path)
     records = read_jsonl(dataset_path)
     if limit is not None:
         records = records[:limit]
+    if batch_size < 1:
+        raise ValueError("batch_size must be at least 1")
     runner = TransformersVLM(
         model_name=model_name,
         adapter_path=adapter_path,
@@ -157,14 +185,22 @@ def run_inference(
         device=device,
     )
     predictions: list[dict[str, Any]] = []
-    for sample in tqdm(records, desc=f"Inference {model_name}"):
-        image_path = dataset_path.parent / sample["image"]
-        with Image.open(image_path) as image_handle:
-            image = image_handle.convert("RGB")
-            started = time.perf_counter()
-            prediction = runner.predict(image=image, question=sample["question"], prompt_mode=prompt_mode)
-            latency = time.perf_counter() - started
-        predictions.append(
+    progress = tqdm(total=len(records), desc=f"Inference {model_name}")
+    for start in range(0, len(records), batch_size):
+        batch = records[start : start + batch_size]
+        images: list[Image.Image] = []
+        for sample in batch:
+            image_path = dataset_path.parent / sample["image"]
+            with Image.open(image_path) as image_handle:
+                images.append(image_handle.convert("RGB"))
+        started = time.perf_counter()
+        batch_predictions = runner.predict_batch(
+            images=images,
+            questions=[sample["question"] for sample in batch],
+            prompt_mode=prompt_mode,
+        )
+        latency = (time.perf_counter() - started) / len(batch)
+        predictions.extend(
             {
                 "sample_id": sample["sample_id"],
                 "prediction": prediction,
@@ -174,8 +210,11 @@ def run_inference(
                 "adapter_path": adapter_path,
                 "device": runner.device,
             }
+            for sample, prediction in zip(batch, batch_predictions, strict=True)
         )
-    write_jsonl(output_path, predictions)
+        write_jsonl(output_path, predictions)
+        progress.update(len(batch))
+    progress.close()
     return predictions
 
 
@@ -185,4 +224,3 @@ def write_oracle_predictions(dataset_path: str | Path, output_path: str | Path) 
         output_path,
         [{"sample_id": record["sample_id"], "prediction": record["answer"], "latency_seconds": 0.0, "model": "oracle"} for record in records],
     )
-
