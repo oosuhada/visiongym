@@ -1,0 +1,132 @@
+{
+  "model": "Qwen/Qwen3-VL-2B-Instruct+VisionGym-LoRA",
+  "prompt_mode": "fewshot",
+  "samples": 1400,
+  "predictions_missing": 0,
+  "overall_accuracy": 0.5642857142857143,
+  "id_accuracy": 0.665,
+  "ood_accuracy": 0.524,
+  "ood_gap": 0.14100000000000001,
+  "invalid_output_rate": 0.0,
+  "average_latency_seconds": 0.060638886900717025,
+  "by_task": {
+    "above_below": {
+      "accuracy": 0.2962962962962963,
+      "samples": 81
+    },
+    "between": {
+      "accuracy": 0.35802469135802467,
+      "samples": 81
+    },
+    "center_proximity": {
+      "accuracy": 0.6048387096774194,
+      "samples": 124
+    },
+    "counting": {
+      "accuracy": 0.564935064935065,
+      "samples": 154
+    },
+    "inside_outside": {
+      "accuracy": 0.9932885906040269,
+      "samples": 149
+    },
+    "left_right": {
+      "accuracy": 0.24,
+      "samples": 100
+    },
+    "multi_hop": {
+      "accuracy": 0.5084745762711864,
+      "samples": 177
+    },
+    "nearest_farthest": {
+      "accuracy": 0.23728813559322035,
+      "samples": 118
+    },
+    "overlap": {
+      "accuracy": 0.9435483870967742,
+      "samples": 124
+    },
+    "relative_ordering": {
+      "accuracy": 0.5163398692810458,
+      "samples": 153
+    },
+    "relative_size": {
+      "accuracy": 0.6402877697841727,
+      "samples": 139
+    }
+  },
+  "by_difficulty": {
+    "1": {
+      "accuracy": 0.7926829268292683,
+      "samples": 82
+    },
+    "2": {
+      "accuracy": 0.5716981132075472,
+      "samples": 1060
+    },
+    "3": {
+      "accuracy": 0.35802469135802467,
+      "samples": 81
+    },
+    "4": {
+      "accuracy": 0.5084745762711864,
+      "samples": 177
+    }
+  },
+  "by_split": {
+    "ood_background": {
+      "accuracy": 0.69,
+      "samples": 200
+    },
+    "ood_count": {
+      "accuracy": 0.45,
+      "samples": 200
+    },
+    "ood_occlusion": {
+      "accuracy": 0.505,
+      "samples": 200
+    },
+    "ood_palette": {
+      "accuracy": 0.475,
+      "samples": 200
+    },
+    "ood_shape": {
+      "accuracy": 0.5,
+      "samples": 200
+    },
+    "test": {
+      "accuracy": 0.665,
+      "samples": 400
+    }
+  },
+  "by_ood_type": {
+    "background": {
+      "accuracy": 0.69,
+      "samples": 200
+    },
+    "count": {
+      "accuracy": 0.45,
+      "samples": 200
+    },
+    "occlusion": {
+      "accuracy": 0.505,
+      "samples": 200
+    },
+    "palette": {
+      "accuracy": 0.475,
+      "samples": 200
+    },
+    "shape": {
+      "accuracy": 0.5,
+      "samples": 200
+    }
+  },
+  "error_distribution": {
+    "ood_failure": 476,
+    "distance_reasoning_error": 43,
+    "spatial_inversion": 42,
+    "object_confusion": 21,
+    "relation_chain_failure": 15,
+    "counting_error": 13
+  }
+}
