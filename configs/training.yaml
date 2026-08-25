@@ -4,8 +4,8 @@ train_jsonl: data/generated/train.jsonl
 validation_jsonl: data/generated/validation.jsonl
 epochs: 1
 learning_rate: 0.0002
-per_device_train_batch_size: 1
-gradient_accumulation_steps: 8
+per_device_train_batch_size: 2
+gradient_accumulation_steps: 4
 lora_r: 16
 lora_alpha: 32
 lora_dropout: 0.05
@@ -15,4 +15,3 @@ curriculum: false
 bf16: true
 gradient_checkpointing: true
 load_in_4bit: true
-
