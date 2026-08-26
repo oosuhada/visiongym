@@ -1,15 +1,17 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
 import pandas as pd
+from PIL import Image
 
 from visiongym.dataset import generate_single_split
 from visiongym.evaluation import evaluate_records, normalize_answer, read_jsonl
 from visiongym.experiments import ingest_results
 from visiongym.geometry import overlaps
-from visiongym.inference import resolve_device
+from visiongym.inference import _iter_batches, _run_with_runner, resolve_device, run_prompt_sweep
 
 
 def test_answer_normalization() -> None:
@@ -62,6 +64,99 @@ def test_cpu_device_rejects_bitsandbytes_4bit() -> None:
         assert "CUDA" in str(exc)
     else:
         raise AssertionError("4-bit CPU loading must be rejected")
+
+
+def test_inference_batches_preserve_order_and_validate_size() -> None:
+    records = [{"sample_id": f"s{i}"} for i in range(5)]
+    batches = _iter_batches(records, 2)
+    assert [[row["sample_id"] for row in batch] for batch in batches] == [["s0", "s1"], ["s2", "s3"], ["s4"]]
+    try:
+        _iter_batches(records, 0)
+    except ValueError as exc:
+        assert "at least 1" in str(exc)
+    else:
+        raise AssertionError("batch_size=0 must be rejected")
+
+
+def test_batched_runner_writes_ordered_predictions_and_runtime_metadata(tmp_path: Path) -> None:
+    image_dir = tmp_path / "images"
+    image_dir.mkdir()
+    records = []
+    for index in range(5):
+        image_path = image_dir / f"s{index}.png"
+        Image.new("RGB", (16, 16), "white").save(image_path)
+        records.append(
+            {
+                "sample_id": f"s{index}",
+                "image": f"images/s{index}.png",
+                "question": f"question-{index}",
+            }
+        )
+
+    class FakeRunner:
+        device = "cpu"
+        calls: list[int] = []
+
+        def predict_batch(self, images, questions, prompt_mode="direct", max_new_tokens=48):
+            self.calls.append(len(images))
+            return [f"answer-{question.split('-')[-1]}" for question in questions]
+
+    output = tmp_path / "predictions.jsonl"
+    runner = FakeRunner()
+    predictions = _run_with_runner(
+        runner=runner,
+        records=records,
+        dataset_path=tmp_path / "benchmark.jsonl",
+        output_path=output,
+        model_name="fake",
+        prompt_mode="direct",
+        adapter_path=None,
+        batch_size=2,
+        max_new_tokens=12,
+    )
+    assert runner.calls == [2, 2, 1]
+    assert [record["sample_id"] for record in predictions] == [f"s{i}" for i in range(5)]
+    assert [record["batch_size"] for record in predictions] == [2, 2, 2, 2, 1]
+    metadata = json.loads((tmp_path / "predictions.meta.json").read_text(encoding="utf-8"))
+    assert metadata["configured_batch_size"] == 2
+    assert metadata["samples"] == 5
+    assert metadata["max_new_tokens"] == 12
+    assert metadata["throughput_samples_per_second"] > 0
+
+
+def test_prompt_sweep_loads_runner_once(tmp_path: Path, monkeypatch) -> None:
+    image_dir = tmp_path / "images"
+    image_dir.mkdir()
+    Image.new("RGB", (16, 16), "white").save(image_dir / "s1.png")
+    dataset_path = tmp_path / "benchmark.jsonl"
+    dataset_path.write_text(
+        '{"sample_id":"s1","image":"images/s1.png","question":"Where?","answer":"left","task":"left_right","difficulty":1,"split":"test","ood_type":null}\n',
+        encoding="utf-8",
+    )
+
+    class FakeSweepRunner:
+        init_count = 0
+        device = "cpu"
+
+        def __init__(self, *args, **kwargs):
+            type(self).init_count += 1
+
+        def predict_batch(self, images, questions, prompt_mode="direct", max_new_tokens=48):
+            return [prompt_mode for _ in questions]
+
+    monkeypatch.setattr("visiongym.inference.TransformersVLM", FakeSweepRunner)
+    outputs = run_prompt_sweep(
+        dataset_path=dataset_path,
+        output_dir=tmp_path / "outputs",
+        model_name="fake",
+        prompt_modes=["direct", "reasoning", "fewshot"],
+        batch_size=2,
+    )
+    assert FakeSweepRunner.init_count == 1
+    assert set(outputs) == {"direct", "reasoning", "fewshot"}
+    for mode, path in outputs.items():
+        records = read_jsonl(path)
+        assert records[0]["prediction"] == mode
 
 
 def test_ood_error_keeps_reasoning_category() -> None:
@@ -117,6 +212,17 @@ def test_ingest_results_builds_comparison_and_failure_gallery(tmp_path: Path) ->
         + "\n",
         encoding="utf-8",
     )
+    (bundle / "base-reasoning.meta.json").write_text(
+        json.dumps(
+            {
+                "configured_batch_size": 8,
+                "throughput_samples_per_second": 12.5,
+                "peak_vram_gb": 9.75,
+                "wall_seconds": 0.16,
+            }
+        ),
+        encoding="utf-8",
+    )
     result = ingest_results(bundle, dataset_path, tmp_path / "experiment", strict=True)
     assert len(result["runs"]) == 2
     experiment_dir = tmp_path / "experiment"
@@ -129,3 +235,8 @@ def test_ingest_results_builds_comparison_and_failure_gallery(tmp_path: Path) ->
     assert pairwise.loc[0, "regressed"] == 0
     assert len(result["dataset_sha256"]) == 64
     assert len(result["runs"][0]["prediction_sha256"]) == 64
+    comparison = pd.read_csv(experiment_dir / result["comparison"])
+    reasoning = comparison[comparison["prompt_mode"] == "reasoning"].iloc[0]
+    assert reasoning["configured_batch_size"] == 8
+    assert reasoning["throughput_samples_per_second"] == 12.5
+    assert reasoning["peak_vram_gb"] == 9.75

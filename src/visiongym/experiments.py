@@ -105,18 +105,22 @@ def _write_experiment_summary(output_dir: Path, runs: list[dict[str, Any]], comp
                 "",
                 "## Accuracy comparison",
                 "",
-                "| Run | Model | Prompt | Overall | ID | OOD | OOD gap | Multi-hop | Avg latency |",
-                "|---|---|---|---:|---:|---:|---:|---:|---:|",
+                "| Run | Model | Prompt | Overall | ID | OOD | OOD gap | Multi-hop | Avg latency | Samples/sec | Peak VRAM |",
+                "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
             ]
         )
         for run, (_, row) in zip(runs, comparison.iterrows()):
             latency = row.get("average_latency_seconds")
             latency_text = "n/a" if latency is None or pd.isna(latency) else f"{float(latency):.3f}s"
+            throughput = row.get("throughput_samples_per_second")
+            throughput_text = "n/a" if throughput is None or pd.isna(throughput) else f"{float(throughput):.2f}"
+            peak_vram = row.get("peak_vram_gb")
+            peak_vram_text = "n/a" if peak_vram is None or pd.isna(peak_vram) else f"{float(peak_vram):.2f} GB"
             lines.append(
                 f"| {run['name']} | {row.get('model') or 'unknown'} | {row.get('prompt_mode') or 'unknown'} | "
                 f"{_format_pct(row.get('overall_accuracy'))} | {_format_pct(row.get('id_accuracy'))} | "
                 f"{_format_pct(row.get('ood_accuracy'))} | {_format_pct(row.get('ood_gap'))} | "
-                f"{_format_pct(row.get('task_multi_hop'))} | {latency_text} |"
+                f"{_format_pct(row.get('task_multi_hop'))} | {latency_text} | {throughput_text} | {peak_vram_text} |"
             )
     summary.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return summary
@@ -313,6 +317,15 @@ def ingest_results(
             create_report(run_output / "metrics.json", run_output)
             metric_paths.append(run_output / "metrics.json")
 
+            runtime_metadata: dict[str, Any] = {}
+            source_runtime = source_path.with_suffix(".meta.json")
+            runtime_artifact: str | None = None
+            if source_runtime.exists():
+                runtime_metadata = json.loads(source_runtime.read_text(encoding="utf-8"))
+                runtime_copy = run_output / "runtime.json"
+                shutil.copy2(source_runtime, runtime_copy)
+                runtime_artifact = _artifact_path(output, runtime_copy)
+
             failures = read_jsonl(run_output / "failures.jsonl")
             for failure in failures[:24]:
                 gallery_rows.append(
@@ -342,6 +355,8 @@ def ingest_results(
                     "model": model_name,
                     "prompt_mode": prompt_mode,
                     "adapter_path": adapter_path,
+                    "runtime": runtime_artifact,
+                    "runtime_metadata": runtime_metadata,
                     "validation": validation,
                     "overall_accuracy": metrics.get("overall_accuracy"),
                     "id_accuracy": metrics.get("id_accuracy"),
@@ -351,6 +366,13 @@ def ingest_results(
 
     comparison_path = output / "comparison.csv"
     comparison = compare_metric_files(metric_paths, comparison_path)
+    for index, run in enumerate(runs):
+        runtime = run.get("runtime_metadata") or {}
+        comparison.loc[index, "configured_batch_size"] = runtime.get("configured_batch_size")
+        comparison.loc[index, "throughput_samples_per_second"] = runtime.get("throughput_samples_per_second")
+        comparison.loc[index, "peak_vram_gb"] = runtime.get("peak_vram_gb")
+        comparison.loc[index, "wall_seconds"] = runtime.get("wall_seconds")
+    comparison.to_csv(comparison_path, index=False)
     gallery_path = output / "failure_gallery.csv"
     pd.DataFrame(gallery_rows).to_csv(gallery_path, index=False)
     pairwise = _paired_analysis(output, runs)
