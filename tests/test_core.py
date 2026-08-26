@@ -3,8 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pandas as pd
+
 from visiongym.dataset import generate_single_split
 from visiongym.evaluation import evaluate_records, normalize_answer, read_jsonl
+from visiongym.experiments import ingest_results
 from visiongym.geometry import overlaps
 from visiongym.inference import resolve_device
 
@@ -59,3 +62,70 @@ def test_cpu_device_rejects_bitsandbytes_4bit() -> None:
         assert "CUDA" in str(exc)
     else:
         raise AssertionError("4-bit CPU loading must be rejected")
+
+
+def test_ood_error_keeps_reasoning_category() -> None:
+    dataset = [
+        {
+            "sample_id": "ood_1",
+            "image": "images/ood_1.png",
+            "question": "How many red objects are there?",
+            "answer": "2",
+            "task": "counting",
+            "difficulty": 2,
+            "split": "ood_count",
+            "ood_type": "count",
+        }
+    ]
+    metrics, rows = evaluate_records(dataset, [{"sample_id": "ood_1", "prediction": "3"}])
+    assert rows[0]["error_type"] == "counting_error"
+    assert rows[0]["ood_failure"] is True
+    assert metrics["ood_error_distribution"] == {"counting_error": 1}
+
+
+def test_ingest_results_builds_comparison_and_failure_gallery(tmp_path: Path) -> None:
+    dataset_path = tmp_path / "benchmark.jsonl"
+    dataset_path.write_text(
+        "\n".join(
+            [
+                '{"sample_id":"s1","image":"images/s1.png","question":"Count","answer":"2","task":"counting","difficulty":1,"split":"test","ood_type":null}',
+                '{"sample_id":"s2","image":"images/s2.png","question":"Count","answer":"1","task":"counting","difficulty":1,"split":"ood_count","ood_type":"count"}',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / "base-direct.jsonl").write_text(
+        "\n".join(
+            [
+                '{"sample_id":"s1","prediction":"2","model":"demo","prompt_mode":"direct","latency_seconds":0.2}',
+                '{"sample_id":"s2","prediction":"2","model":"demo","prompt_mode":"direct","latency_seconds":0.2}',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (bundle / "base-reasoning.jsonl").write_text(
+        "\n".join(
+            [
+                '{"sample_id":"s1","prediction":"2","model":"demo","prompt_mode":"reasoning","latency_seconds":0.3}',
+                '{"sample_id":"s2","prediction":"1","model":"demo","prompt_mode":"reasoning","latency_seconds":0.3}',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    result = ingest_results(bundle, dataset_path, tmp_path / "experiment", strict=True)
+    assert len(result["runs"]) == 2
+    experiment_dir = tmp_path / "experiment"
+    assert (experiment_dir / result["comparison"]).exists()
+    assert (experiment_dir / result["failure_gallery"]).exists()
+    assert (tmp_path / "experiment" / "runs" / "base-direct" / "task_domain_accuracy.csv").exists()
+    assert result["pairwise"] is not None
+    pairwise = pd.read_csv(experiment_dir / result["pairwise"]["summary"])
+    assert pairwise.loc[0, "improved"] == 1
+    assert pairwise.loc[0, "regressed"] == 0
+    assert len(result["dataset_sha256"]) == 64
+    assert len(result["runs"][0]["prediction_sha256"]) == 64

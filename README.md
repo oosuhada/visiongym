@@ -175,6 +175,22 @@ Errors are automatically grouped into practical categories such as:
 
 The raw image, question, ground truth, model prediction, task, difficulty, and OOD type remain in `failures.jsonl` for manual inspection.
 
+OOD failures keep their underlying reasoning category as well. For example, a wrong counting answer in `ood_count` remains a `counting_error` and is separately marked as an OOD failure, instead of losing the causal error type under a generic OOD label. Reports also include `task_domain_accuracy.csv`, which makes task × ID/OOD degradation directly inspectable.
+
+## Import Colab experiment results
+
+Colab outputs can be downloaded as a ZIP or copied as a directory and validated/rebuilt locally in one command:
+
+```bash
+visiongym ingest-results \
+  --bundle ~/Downloads/visiongym-results.zip \
+  --dataset data/generated/benchmark.jsonl \
+  --output experiments/a100-baseline \
+  --strict
+```
+
+The importer discovers prediction JSONL files, checks missing/duplicate/unexpected sample IDs, copies the raw predictions, re-runs the current evaluator, generates per-run charts/reports, creates a cross-run `comparison.csv`, and produces a stratified `failure_gallery.csv`. When multiple runs are present it also selects the base `direct` run and writes `pairwise_summary.csv`, `pairwise_task_delta.csv`, and `pairwise_examples.csv`, so prompt/LoRA runs can be inspected as samples fixed versus samples regressed instead of only comparing aggregate accuracy. This means Colab can focus only on expensive GPU inference/training while the canonical evaluation logic remains reproducible in the repository.
+
 ## LoRA / QLoRA fine-tuning
 
 `configs/training.yaml` defaults to a Colab-friendly QLoRA setup for Qwen3-VL-2B-Instruct.
@@ -247,9 +263,10 @@ Prediction files can be injected without changing code:
 export VISIONGYM_DATASET=data/generated/benchmark.jsonl
 export VISIONGYM_BASE_PREDICTIONS=outputs/base-direct.jsonl
 export VISIONGYM_FINETUNED_PREDICTIONS=outputs/lora-direct.jsonl
+export VISIONGYM_EXPERIMENT_DIR=experiments/a100-baseline
 ```
 
-This makes the deployed demo useful even when a large VLM is not served on the web server itself.
+This makes the deployed demo useful even when a large VLM is not served on the web server itself. When `VISIONGYM_EXPERIMENT_DIR` points at an ingested experiment bundle, the demo also exposes the run comparison, paired improvement/regression table, and representative failure browser.
 
 Live demo: https://visiongym.oosu.dev
 
