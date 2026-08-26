@@ -111,7 +111,8 @@ visiongym infer \
   --model Qwen/Qwen3-VL-2B-Instruct \
   --prompt-mode direct \
   --device auto \
-  --load-in-4bit
+  --load-in-4bit \
+  --batch-size 8
 ```
 
 `--device auto` selects CUDA first, then Apple MPS, then CPU. The `--load-in-4bit` path is intentionally restricted to CUDA because it uses bitsandbytes; omit it for Apple Silicon local smoke tests.
@@ -206,7 +207,8 @@ visiongym infer \
   --model Qwen/Qwen3-VL-2B-Instruct \
   --adapter checkpoints/visiongym-qwen3-vl-2b-lora \
   --prompt-mode direct \
-  --load-in-4bit
+  --load-in-4bit \
+  --batch-size 8
 
 visiongym evaluate \
   --dataset data/generated/benchmark.jsonl \
@@ -241,6 +243,8 @@ The demo has two surfaces:
 1. **Generate Problem** — choose ID/OOD condition and seed, then inspect the generated image, question, ground truth, task, and difficulty.
 2. **Result Viewer** — inspect benchmark records and optionally compare precomputed base/fine-tuned predictions.
 
+The repository includes a 24-sample measured showcase under `data/showcase/`. It is loaded by default and covers every benchmark split and reasoning task, with Base few-shot and VisionGym LoRA direct predictions side by side.
+
 Prediction files can be injected without changing code:
 
 ```bash
@@ -253,28 +257,31 @@ This makes the deployed demo useful even when a large VLM is not served on the w
 
 Live demo: https://visiongym.oosu.dev
 
-## Current measured status
+## Measured A100 results
 
-The repository does **not** invent model metrics. Current checked-in/local verification is:
+These are real measurements from the checked-in 1,400-question benchmark (400 ID + 1,000 OOD), using Qwen3-VL-2B-Instruct in 4-bit mode on a Colab A100. QLoRA used 1,200 training QA, LoRA rank 16, one epoch, and an effective batch size of 8.
 
 | Check | Result |
 |---|---:|
-| Core tests | 5 passed |
+| Core tests | 6 passed |
 | Public sample scenes | 22 |
 | Public sample benchmark QA | 42 |
 | ID sample QA | 12 |
 | OOD sample QA | 30 |
 | Ground-truth/oracle evaluator smoke test | 100% as expected |
-| Qwen3-VL local benchmark | not recorded yet |
-| Qwen3-VL LoRA benchmark | not recorded yet |
-
-The actual portfolio result table should be populated only after running the Colab notebooks:
+| A100 baseline + QLoRA experiment | completed |
+| QLoRA training time | 9m 11s |
 
 | Model | Prompt | ID Accuracy | Multi-hop | OOD Accuracy | OOD Gap | Avg Latency |
 |---|---|---:|---:|---:|---:|---:|
-| Qwen3-VL-2B Base | direct | pending | pending | pending | pending | pending |
-| Qwen3-VL-2B Base | best prompt | pending | pending | pending | pending | pending |
-| Qwen3-VL-2B + VisionGym LoRA | direct | pending | pending | pending | pending | pending |
+| Qwen3-VL-2B Base | direct | 53.25% | 42.94% | 47.70% | 5.55pp | 194.7 ms |
+| Qwen3-VL-2B Base | few-shot | 60.50% | 46.89% | 52.10% | 8.40pp | 42.8 ms |
+| Qwen3-VL-2B + VisionGym LoRA | direct | 65.50% | 48.59% | 55.90% | 9.60pp | 60.0 ms |
+| Qwen3-VL-2B + VisionGym LoRA | few-shot | **66.50%** | **50.85%** | 52.40% | 14.10pp | 60.6 ms |
+
+LoRA direct is the best overall/OOD variant (58.64% overall, 55.90% OOD). LoRA few-shot has the strongest ID and multi-hop accuracy. Full metrics, scored predictions, failures, plots, and comparison CSVs are under `reports/`.
+
+![Measured Base vs LoRA comparison](reports/presentation/screenshots/11-base-vs-lora-comparison.png)
 
 ## Repository layout
 
@@ -319,4 +326,3 @@ visiongym/
 ## License
 
 MIT
-

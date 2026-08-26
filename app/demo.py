@@ -73,9 +73,10 @@ def generate_problem(condition: str, seed: int) -> tuple[str, str, str, str, str
 
 
 def _build_viewer_data() -> tuple[list[dict[str, Any]], dict[str, str], dict[str, str]]:
-    dataset_path = _resolve_optional_path("VISIONGYM_DATASET") or REPO_ROOT / "data" / "sample" / "benchmark.jsonl"
-    base_path = _resolve_optional_path("VISIONGYM_BASE_PREDICTIONS")
-    finetuned_path = _resolve_optional_path("VISIONGYM_FINETUNED_PREDICTIONS")
+    showcase = REPO_ROOT / "data" / "showcase"
+    dataset_path = _resolve_optional_path("VISIONGYM_DATASET") or showcase / "benchmark.jsonl"
+    base_path = _resolve_optional_path("VISIONGYM_BASE_PREDICTIONS") or showcase / "base-fewshot.jsonl"
+    finetuned_path = _resolve_optional_path("VISIONGYM_FINETUNED_PREDICTIONS") or showcase / "lora-direct.jsonl"
     return _read_jsonl(dataset_path), _prediction_map(base_path), _prediction_map(finetuned_path)
 
 
@@ -87,7 +88,7 @@ def show_result(sample_id: str) -> tuple[str | None, str, str, str, str, str, st
     sample = VIEWER_BY_ID.get(sample_id)
     if sample is None:
         return None, "", "", "", "", "", ""
-    dataset_path = _resolve_optional_path("VISIONGYM_DATASET") or REPO_ROOT / "data" / "sample" / "benchmark.jsonl"
+    dataset_path = _resolve_optional_path("VISIONGYM_DATASET") or REPO_ROOT / "data" / "showcase" / "benchmark.jsonl"
     image_path = dataset_path.parent / sample["image"]
     ground_truth = str(sample["answer"])
     base = BASE_PREDICTIONS.get(sample_id, "No base prediction loaded")
@@ -172,4 +173,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
