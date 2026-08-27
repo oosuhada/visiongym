@@ -3,9 +3,9 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "visiongym"
+name = "vlm-reasoning-lab"
 version = "0.1.0"
-description = "Synthetic visual reasoning benchmark and fine-tuning lab for VLMs"
+description = "Synthetic VLM reasoning benchmark with automatic ground truth, QLoRA fine-tuning, and ID/OOD failure analysis"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -41,6 +41,8 @@ demo = ["gradio>=5.0"]
 dev = ["pytest>=8.2"]
 
 [project.scripts]
+vlm-reasoning-lab = "visiongym.cli:main"
+# Backward-compatible alias retained for existing notebooks and deployments.
 visiongym = "visiongym.cli:main"
 
 [tool.setuptools.packages.find]
