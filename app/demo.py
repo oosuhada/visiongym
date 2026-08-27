@@ -31,6 +31,9 @@ OOD_BY_LABEL = {
     "OOD · occlusion": "occlusion",
 }
 
+BASE_LABEL = os.getenv("VISIONGYM_BASE_LABEL", "Base few-shot")
+FINETUNED_LABEL = os.getenv("VISIONGYM_FINETUNED_LABEL", "LoRA direct")
+
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
@@ -64,7 +67,7 @@ def _read_csv(path: Path | None) -> pd.DataFrame:
 
 
 def _load_experiment_data() -> tuple[Path | None, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    experiment_dir = _resolve_optional_path("VISIONGYM_EXPERIMENT_DIR")
+    experiment_dir = _resolve_optional_path("VISIONGYM_EXPERIMENT_DIR") or REPO_ROOT / "reports" / "measured"
     if experiment_dir is None or not experiment_dir.is_dir():
         return None, pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     comparison = _read_csv(experiment_dir / "comparison.csv")
@@ -117,8 +120,8 @@ def show_result(sample_id: str) -> tuple[str | None, str, str, str, str, str, st
     base = BASE_PREDICTIONS.get(sample_id, "No base prediction loaded")
     finetuned = FINETUNED_PREDICTIONS.get(sample_id, "No fine-tuned prediction loaded")
     status = (
-        f"Base: {'correct' if base.strip().lower() == ground_truth.strip().lower() else 'incorrect'} · "
-        f"Fine-tuned: {'correct' if finetuned.strip().lower() == ground_truth.strip().lower() else 'incorrect'}"
+        f"{BASE_LABEL}: {'correct' if base.strip().lower() == ground_truth.strip().lower() else 'incorrect'} · "
+        f"{FINETUNED_LABEL}: {'correct' if finetuned.strip().lower() == ground_truth.strip().lower() else 'incorrect'}"
     )
     metadata = f"task={sample['task']} · difficulty={sample['difficulty']} · split={sample['split']} · ood={sample.get('ood_type') or 'ID'}"
     return str(image_path), sample["question"], ground_truth, base, finetuned, status, metadata
@@ -131,6 +134,8 @@ def show_experiment_failure(key: str) -> tuple[str | None, str, str, str, str]:
     dataset_path = _resolve_optional_path("VISIONGYM_DATASET") or REPO_ROOT / "data" / "sample" / "benchmark.jsonl"
     image_value = row.get("image")
     image_path = dataset_path.parent / str(image_value) if image_value else None
+    if image_path is not None and not image_path.exists():
+        image_path = None
     metadata = (
         f"run={row.get('run')} · task={row.get('task')} · difficulty={row.get('difficulty')} · "
         f"split={row.get('split')} · ood={row.get('ood_type')} · error={row.get('error_type')}"
@@ -172,8 +177,8 @@ def build_app() -> gr.Blocks:
             result_question = gr.Textbox(label="Question")
             with gr.Row():
                 result_ground_truth = gr.Textbox(label="Ground truth")
-                result_base = gr.Textbox(label="Base model")
-                result_finetuned = gr.Textbox(label="Fine-tuned model")
+                result_base = gr.Textbox(label=BASE_LABEL)
+                result_finetuned = gr.Textbox(label=FINETUNED_LABEL)
             result_status = gr.Textbox(label="Correct / Incorrect")
             result_metadata = gr.Textbox(label="Task metadata")
             sample_dropdown.change(
