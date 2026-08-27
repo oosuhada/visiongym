@@ -11,10 +11,20 @@
 
 ## Error distribution
 
-- ood_failure: 526
-- spatial_inversion: 68
-- distance_reasoning_error: 47
-- relation_chain_failure: 30
-- object_confusion: 23
-- counting_error: 19
-- other: 11
+- spatial_inversion: 288
+- distance_reasoning_error: 142
+- relation_chain_failure: 114
+- object_confusion: 82
+- counting_error: 74
+- other: 20
+- relation_error: 4
+
+## OOD error distribution
+
+- spatial_inversion: 220
+- distance_reasoning_error: 95
+- relation_chain_failure: 84
+- object_confusion: 59
+- counting_error: 55
+- other: 9
+- relation_error: 4
