@@ -6,7 +6,7 @@ from pathlib import Path
 
 from visiongym.dataset import generate_from_config, generate_single_split
 from visiongym.evaluation import compare_metric_files, evaluate_files
-from visiongym.experiments import ingest_results
+from visiongym.experiments import build_analysis_from_reports, ingest_results
 from visiongym.inference import run_inference, run_prompt_sweep, write_oracle_predictions
 from visiongym.reporting import create_report
 from visiongym.sft import prepare_sft_dataset, train_lora
@@ -86,6 +86,10 @@ def _build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("--output", required=True, help="Experiment output directory")
     ingest.add_argument("--strict", action="store_true", help="Fail on missing, duplicate, or unexpected sample IDs")
 
+    analyze = subparsers.add_parser("analyze-reports", help="Build compact cross-run analysis from evaluated report directories")
+    analyze.add_argument("reports", nargs="+", help="Evaluated report directories containing metrics.json and predictions_scored.csv")
+    analyze.add_argument("--output", required=True, help="Output directory for compact measured analysis")
+
     return parser
 
 
@@ -158,6 +162,9 @@ def main() -> None:
         print(json.dumps({"created": [str(path) for path in created]}, ensure_ascii=False, indent=2))
     elif args.command == "ingest-results":
         manifest = ingest_results(args.bundle, args.dataset, args.output, strict=args.strict)
+        print(json.dumps(manifest, ensure_ascii=False, indent=2))
+    elif args.command == "analyze-reports":
+        manifest = build_analysis_from_reports(args.reports, args.output)
         print(json.dumps(manifest, ensure_ascii=False, indent=2))
 
 

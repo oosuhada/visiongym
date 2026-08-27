@@ -9,7 +9,7 @@ from PIL import Image
 
 from visiongym.dataset import generate_single_split
 from visiongym.evaluation import evaluate_records, normalize_answer, read_jsonl
-from visiongym.experiments import ingest_results
+from visiongym.experiments import build_analysis_from_reports, ingest_results
 from visiongym.geometry import overlaps
 from visiongym.inference import _iter_batches, _run_with_runner, resolve_device, run_inference, run_prompt_sweep
 
@@ -251,3 +251,52 @@ def test_ingest_results_builds_comparison_and_failure_gallery(tmp_path: Path) ->
     assert reasoning["configured_batch_size"] == 8
     assert reasoning["throughput_samples_per_second"] == 12.5
     assert reasoning["peak_vram_gb"] == 9.75
+
+
+def test_build_analysis_from_existing_reports(tmp_path: Path) -> None:
+    report_dirs: list[Path] = []
+    for name, accuracy, prompt, model in [
+        ("base-direct", 0.5, "direct", "base"),
+        ("lora-direct", 0.75, "direct", "base+LoRA"),
+    ]:
+        report_dir = tmp_path / name
+        report_dir.mkdir()
+        metrics = {
+            "model": model,
+            "prompt_mode": prompt,
+            "overall_accuracy": accuracy,
+            "id_accuracy": accuracy,
+            "ood_accuracy": accuracy,
+            "ood_gap": 0.0,
+            "average_latency_seconds": 0.1,
+            "by_task": {"multi_hop": {"accuracy": accuracy, "samples": 2}},
+        }
+        (report_dir / "metrics.json").write_text(json.dumps(metrics), encoding="utf-8")
+        pd.DataFrame(
+            [
+                {
+                    "sample_id": "s1",
+                    "image": "images/s1.png",
+                    "question": "Where?",
+                    "answer": "left",
+                    "prediction": "left" if accuracy > 0.5 else "right",
+                    "normalized_prediction": "left" if accuracy > 0.5 else "right",
+                    "correct": accuracy > 0.5,
+                    "task": "multi_hop",
+                    "difficulty": 4,
+                    "split": "test",
+                    "ood_type": None,
+                }
+            ]
+        ).to_csv(report_dir / "predictions_scored.csv", index=False)
+        (report_dir / "failures.jsonl").write_text("", encoding="utf-8")
+        report_dirs.append(report_dir)
+
+    output = tmp_path / "measured"
+    manifest = build_analysis_from_reports(report_dirs, output)
+    comparison = pd.read_csv(output / "comparison.csv")
+    pairwise = pd.read_csv(output / "pairwise_summary.csv")
+    assert manifest["source"] == "checked-in evaluated reports"
+    assert comparison["run"].tolist() == ["base-direct", "lora-direct"]
+    assert pairwise.loc[0, "improved"] == 1
+    assert pairwise.loc[0, "regressed"] == 0

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import os
 import shutil
 import tempfile
 import zipfile
@@ -252,6 +253,108 @@ def _paired_analysis(output: Path, runs: list[dict[str, Any]]) -> dict[str, str]
         "task_delta": _artifact_path(output, task_path),
         "examples": _artifact_path(output, examples_path),
     }
+
+
+def build_analysis_from_reports(
+    report_dirs: list[str | Path],
+    output_dir: str | Path,
+) -> dict[str, Any]:
+    """Build a compact cross-run analysis bundle from existing evaluated report directories.
+
+    This intentionally references the existing scored prediction CSV files instead of
+    copying raw prediction JSONL again, keeping the public measured artifact compact.
+    """
+    if not report_dirs:
+        raise ValueError("report_dirs must contain at least one evaluated report directory")
+
+    output = Path(output_dir).expanduser().resolve()
+    output.mkdir(parents=True, exist_ok=True)
+
+    runs: list[dict[str, Any]] = []
+    metric_paths: list[Path] = []
+    gallery_rows: list[dict[str, Any]] = []
+
+    for report_dir_value in report_dirs:
+        report_dir = Path(report_dir_value).expanduser().resolve()
+        metrics_path = report_dir / "metrics.json"
+        scored_path = report_dir / "predictions_scored.csv"
+        failures_path = report_dir / "failures.jsonl"
+        if not metrics_path.exists() or not scored_path.exists():
+            raise ValueError(f"Report directory is missing metrics/scored predictions: {report_dir}")
+
+        metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+        name = report_dir.name
+        model_name = metrics.get("model")
+        prompt_mode = metrics.get("prompt_mode")
+        adapter_path = "measured-lora" if "lora" in name.lower() else None
+        runs.append(
+            {
+                "name": name,
+                "model": model_name,
+                "prompt_mode": prompt_mode,
+                "adapter_path": adapter_path,
+                "metrics": os.path.relpath(metrics_path, output),
+                "scored_predictions": os.path.relpath(scored_path, output),
+            }
+        )
+        metric_paths.append(metrics_path)
+
+        if failures_path.exists():
+            for failure in read_jsonl(failures_path)[:24]:
+                gallery_rows.append(
+                    {
+                        "run": name,
+                        "sample_id": failure.get("sample_id"),
+                        "image": failure.get("image"),
+                        "question": failure.get("question"),
+                        "ground_truth": failure.get("answer"),
+                        "prediction": failure.get("prediction"),
+                        "task": failure.get("task"),
+                        "difficulty": failure.get("difficulty"),
+                        "split": failure.get("split"),
+                        "ood_type": failure.get("ood_type") or "ID",
+                        "error_type": failure.get("error_type"),
+                    }
+                )
+
+    comparison_path = output / "comparison.csv"
+    comparison = compare_metric_files(metric_paths, comparison_path)
+    comparison.insert(0, "run", [run["name"] for run in runs])
+    comparison.to_csv(comparison_path, index=False)
+
+    gallery_path = output / "failure_gallery.csv"
+    pd.DataFrame(gallery_rows).to_csv(gallery_path, index=False)
+    pairwise = _paired_analysis(output, runs)
+
+    summary_path = output / "summary.md"
+    lines = [
+        "# VisionGym Measured Experiment Analysis",
+        "",
+        "This bundle is generated from the checked-in evaluated A100 reports.",
+        "",
+        "| Run | Overall | ID | OOD | Multi-hop |",
+        "|---|---:|---:|---:|---:|",
+    ]
+    for _, row in comparison.iterrows():
+        lines.append(
+            f"| {row.get('run')} | {_format_pct(row.get('overall_accuracy'))} | "
+            f"{_format_pct(row.get('id_accuracy'))} | {_format_pct(row.get('ood_accuracy'))} | "
+            f"{_format_pct(row.get('task_multi_hop'))} |"
+        )
+    summary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    manifest = {
+        "schema_version": 1,
+        "source": "checked-in evaluated reports",
+        "runs": runs,
+        "comparison": comparison_path.name,
+        "failure_gallery": gallery_path.name,
+        "pairwise": pairwise,
+        "summary": summary_path.name,
+    }
+    manifest_path = output / "analysis_manifest.json"
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return manifest
 
 
 def ingest_results(
